@@ -1,0 +1,167 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --surface-2: #f8fafc;
+  --border: #e3e8ef;
+  --text: #0f1b2d;
+  --muted: #5b6b80;
+  --primary: #1f5eff;
+  --primary-soft: #e8efff;
+  --ok: #14915f;
+  --ok-soft: #e3f6ee;
+  --warn: #c77700;
+  --warn-soft: #fff3dc;
+  --bad: #d23b3b;
+  --bad-soft: #fde8e8;
+  --side: #0f1b2d;
+  --side-text: #c9d3e0;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b121d;
+    --surface: #121b28;
+    --surface-2: #172232;
+    --border: #243246;
+    --text: #e7edf5;
+    --muted: #93a3b8;
+    --primary: #5b8cff;
+    --primary-soft: #1a2a4a;
+    --ok: #3cc28a;
+    --ok-soft: #123326;
+    --warn: #f0a63a;
+    --warn-soft: #3a2a10;
+    --bad: #f06b6b;
+    --bad-soft: #3d1717;
+    --side: #070c14;
+    --side-text: #a9b6c8;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-primary: var(--primary);
+  --color-primary-soft: var(--primary-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+  --color-side: var(--side);
+  --color-side-text: var(--side-text);
+  --font-sans: var(--font-plex-thai), system-ui, sans-serif;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl border border-border bg-surface p-[18px] shadow-[0_1px_3px_rgba(16,24,40,.06)];
+  }
+  .btn {
+    @apply inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-border bg-surface px-3.5 py-2 text-sm font-medium transition hover:bg-surface-2 disabled:opacity-60;
+  }
+  .btn-primary {
+    @apply border-primary bg-primary text-white hover:bg-primary hover:opacity-90;
+  }
+  .input {
+    @apply w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text outline-none focus:border-primary focus:ring-2 focus:ring-primary-soft;
+  }
+  .label {
+    @apply mb-1 block text-[13px] text-muted;
+  }
+  /* ตาราง Card ของเมนูเพิ่มเติม: 12 คอลัมน์บนจอใหญ่ ลดเหลือ 6 / 2 บนจอเล็ก — Card กว้างเกินจะถูกบีบให้พอดีแถว */
+  .card-grid {
+    --cols: 2;
+    display: grid;
+    grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
+    grid-auto-rows: 24px;
+    gap: 12px;
+  }
+  .card-grid > * {
+    grid-column: span min(var(--w, 2), var(--cols));
+    grid-row: span var(--h, 5);
+  }
+  @media (min-width: 768px) {
+    .card-grid {
+      --cols: 6;
+    }
+  }
+  @media (min-width: 1280px) {
+    .card-grid {
+      --cols: 12;
+    }
+  }
+}
+
+/* พิมพ์ / บันทึกเป็น PDF จากหน้ารายงาน */
+@page {
+  size: A4;
+  margin: 12mm;
+}
+
+@media print {
+  /* พิมพ์ด้วยสีโหมดสว่างเสมอ แม้เครื่องตั้งโหมดมืด */
+  :root {
+    color-scheme: light;
+    --bg: #fff;
+    --surface: #fff;
+    --surface-2: #f8fafc;
+    --border: #d8dee8;
+    --text: #0f1b2d;
+    --muted: #5b6b80;
+    --primary: #1f5eff;
+    --primary-soft: #e8efff;
+    --ok: #14915f;
+    --ok-soft: #e3f6ee;
+    --warn: #c77700;
+    --warn-soft: #fff3dc;
+    --bad: #d23b3b;
+    --bad-soft: #fde8e8;
+  }
+  body {
+    background: #fff;
+    font-size: 12px;
+  }
+  .card {
+    box-shadow: none;
+    break-inside: avoid;
+  }
+  .print-break {
+    break-before: page;
+  }
+}
+
+/* ตารางในรายงานประจำวัน (Daily construction report) */
+table.dcr {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.dcr th,
+.dcr td {
+  border: 1px solid color-mix(in srgb, var(--text) 22%, transparent);
+  padding: 3px 6px;
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.dcr th {
+  font-weight: 600;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.dcr .num {
+  text-align: right;
+}

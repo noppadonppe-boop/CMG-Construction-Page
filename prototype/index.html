@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CMG Project Hub</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f4f6f9; --surface:#fff; --surface-2:#f8fafc; --border:#e3e8ef;
+  --text:#0f1b2d; --muted:#5b6b80; --primary:#1f5eff; --primary-soft:#e8efff;
+  --ok:#14915f; --ok-soft:#e3f6ee; --warn:#c77700; --warn-soft:#fff3dc;
+  --bad:#d23b3b; --bad-soft:#fde8e8; --side:#0f1b2d; --side-text:#c9d3e0;
+  --radius:12px; --shadow:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.08);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0b121d; --surface:#121b28; --surface-2:#172232; --border:#243246;
+    --text:#e7edf5; --muted:#93a3b8; --primary:#5b8cff; --primary-soft:#1a2a4a;
+    --ok:#3cc28a; --ok-soft:#123326; --warn:#f0a63a; --warn-soft:#3a2a10;
+    --bad:#f06b6b; --bad-soft:#3d1717; --side:#070c14; --side-text:#a9b6c8;
+    --shadow:none;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0b121d; --surface:#121b28; --surface-2:#172232; --border:#243246;
+  --text:#e7edf5; --muted:#93a3b8; --primary:#5b8cff; --primary-soft:#1a2a4a;
+  --ok:#3cc28a; --ok-soft:#123326; --warn:#f0a63a; --warn-soft:#3a2a10;
+  --bad:#f06b6b; --bad-soft:#3d1717; --side:#070c14; --side-text:#a9b6c8;
+  --shadow:none;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:"IBM Plex Sans Thai",system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5}
+.app{display:grid;grid-template-columns:232px 1fr;min-height:100vh}
+aside{background:var(--side);color:var(--side-text);padding:20px 12px;position:sticky;top:0;height:100vh;display:flex;flex-direction:column;gap:4px}
+.brand{display:flex;align-items:center;gap:10px;padding:0 8px 18px;color:#fff;font-weight:700;font-size:16px}
+.logo{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#1f5eff,#00b3a4);display:grid;place-items:center;font-size:13px}
+.navsec{font-size:11px;text-transform:uppercase;letter-spacing:.08em;opacity:.55;padding:14px 10px 4px}
+.nav{all:unset;cursor:pointer;display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;font-size:14px}
+.nav:hover{background:rgba(255,255,255,.06)}
+.nav.active{background:rgba(91,140,255,.18);color:#fff}
+.nav svg{width:18px;height:18px;flex:none}
+.badge{margin-left:auto;background:var(--bad);color:#fff;font-size:11px;border-radius:99px;padding:0 7px}
+main{min-width:0}
+.topbar{display:flex;align-items:center;gap:12px;padding:14px 28px;border-bottom:1px solid var(--border);background:var(--surface);position:sticky;top:0;z-index:5}
+.search{flex:1;max-width:420px;display:flex;align-items:center;gap:8px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--muted)}
+.search input{all:unset;flex:1;color:var(--text)}
+.spacer{flex:1}
+.iconbtn{all:unset;cursor:pointer;width:34px;height:34px;display:grid;place-items:center;border-radius:8px;color:var(--muted)}
+.iconbtn:hover{background:var(--surface-2)}
+.avatar{width:34px;height:34px;border-radius:50%;background:var(--primary-soft);color:var(--primary);display:grid;place-items:center;font-weight:600}
+.menu-btn{display:none}
+.page{padding:24px 28px 48px;max-width:1280px}
+h1{font-size:22px;margin:0 0 4px}
+.sub{color:var(--muted);margin:0 0 20px}
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+.head .sub{margin:0}
+.btn{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;font-weight:500;border:1px solid var(--border);background:var(--surface)}
+.btn.primary{background:var(--primary);color:#fff;border-color:var(--primary)}
+.grid{display:grid;gap:16px}
+.kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px}
+.card h3{margin:0 0 12px;font-size:15px}
+.kpi .label{color:var(--muted);font-size:13px}
+.kpi .val{font-size:26px;font-weight:700;margin:2px 0;font-variant-numeric:tabular-nums}
+.delta{font-size:12px}
+.up{color:var(--ok)} .down{color:var(--bad)}
+.two{grid-template-columns:2fr 1fr;margin-top:16px}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-weight:500;color:var(--muted);font-size:12px;padding:8px 10px;border-bottom:1px solid var(--border)}
+td{padding:11px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
+tr:last-child td{border-bottom:0}
+tbody tr{cursor:pointer}
+tbody tr:hover td{background:var(--surface-2)}
+.pname{font-weight:600}
+.pmeta{color:var(--muted);font-size:12px}
+.bar{height:6px;border-radius:99px;background:var(--surface-2);border:1px solid var(--border);position:relative;overflow:hidden;min-width:90px}
+.bar i{position:absolute;inset:0 auto 0 0;background:var(--primary);border-radius:99px}
+.bar b{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--text);opacity:.5}
+.pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:500;white-space:nowrap}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.bad{background:var(--bad-soft);color:var(--bad)}
+.pill.info{background:var(--primary-soft);color:var(--primary)}
+.list{display:flex;flex-direction:column}
+.li{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
+.li:last-child{border-bottom:0}
+.dot{width:8px;height:8px;border-radius:50%;margin-top:7px;flex:none}
+.muted{color:var(--muted)}
+.small{font-size:12px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:16px;overflow-x:auto}
+.tab{all:unset;cursor:pointer;padding:10px 14px;color:var(--muted);border-bottom:2px solid transparent;white-space:nowrap}
+.tab.active{color:var(--primary);border-color:var(--primary);font-weight:600}
+.legend{display:flex;gap:16px;font-size:12px;color:var(--muted)}
+.legend span::before{content:"";display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle;background:currentColor}
+.view{display:none}
+.view.active{display:block}
+.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+label{display:block;font-size:13px;color:var(--muted);margin-bottom:4px}
+.input{width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font:inherit}
+textarea.input{min-height:80px;resize:vertical}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{all:unset;cursor:pointer;padding:6px 12px;border:1px solid var(--border);border-radius:99px;font-size:13px}
+.chip.on{background:var(--primary-soft);border-color:var(--primary);color:var(--primary)}
+.photos{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.ph{aspect-ratio:1;border-radius:8px;background:var(--surface-2);border:1px dashed var(--border);display:grid;place-items:center;color:var(--muted);font-size:12px}
+.ph.img{border-style:solid;background:linear-gradient(135deg,#8aa4c8,#4f6b91)}
+.folder{display:flex;align-items:center;gap:12px;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--surface);cursor:pointer}
+.folder:hover{border-color:var(--primary)}
+.ficon{width:38px;height:38px;border-radius:8px;display:grid;place-items:center;font-weight:700;font-size:12px}
+.gantt{display:grid;grid-template-columns:200px 1fr;font-size:13px}
+.gantt .row{display:contents}
+.gantt .nm{padding:8px 0;border-bottom:1px solid var(--border)}
+.gantt .tl{position:relative;border-bottom:1px solid var(--border)}
+.gantt .tk{position:absolute;top:9px;height:16px;border-radius:4px;background:var(--primary-soft);border:1px solid var(--primary)}
+.gantt .tk i{position:absolute;inset:0 auto 0 0;background:var(--primary);border-radius:3px}
+.gantt .today{position:absolute;top:0;bottom:0;width:2px;background:var(--bad)}
+.note{margin-top:28px;padding:14px 16px;border-radius:10px;background:var(--primary-soft);color:var(--text);font-size:13px}
+@media (max-width:1200px){
+  .two{grid-template-columns:1fr}
+}
+@media (max-width:960px){
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .three{grid-template-columns:1fr}
+}
+@media (max-width:760px){
+  .app{grid-template-columns:1fr}
+  aside{position:fixed;left:0;top:0;z-index:20;width:240px;transform:translateX(-100%);transition:transform .2s}
+  aside.open{transform:none}
+  .menu-btn{display:grid}
+  .topbar{padding:10px 16px}
+  .page{padding:16px 16px 40px}
+  .form-grid{grid-template-columns:1fr}
+  .hide-sm{display:none}
+  .gantt{grid-template-columns:120px 1fr}
+  .photos{grid-template-columns:repeat(3,1fr)}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside id="side">
+    <div class="brand"><div class="logo">CMG</div>Project Hub</div>
+    <button class="nav active" data-view="dash"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>ภาพรวม</button>
+    <button class="nav" data-view="project"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1M14 9h1M9 13h1M14 13h1M9 17h1M14 17h1"/></svg>โครงการ</button>
+    <div class="navsec">หน้างาน</div>
+    <button class="nav" data-view="daily"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/></svg>รายงานประจำวัน</button>
+    <button class="nav" data-view="issues"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>ปัญหา / ความปลอดภัย<span class="badge">7</span></button>
+    <div class="navsec">ข้อมูล</div>
+    <button class="nav" data-view="docs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>เอกสาร / แบบ</button>
+    <button class="nav" data-view="reports"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>รายงาน</button>
+  </aside>
+
+  <main>
+    <div class="topbar">
+      <button class="iconbtn menu-btn" id="menu" aria-label="เมนู"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg></button>
+      <div class="search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input placeholder="ค้นหาโครงการ เอกสาร RFI..."></div>
+      <div class="spacer"></div>
+      <button class="iconbtn" id="theme" aria-label="สลับธีม"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+      <button class="iconbtn" aria-label="แจ้งเตือน"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg></button>
+      <div class="avatar">นพ</div>
+    </div>
+
+    <!-- DASHBOARD -->
+    <section class="view page active" id="v-dash">
+      <div class="head">
+        <div><h1>ภาพรวมโครงการทั้งหมด</h1><p class="sub">อัปเดตล่าสุด 28 ต.ค. 2569 · 08:30</p></div>
+        <button class="btn primary">+ สร้างโครงการ</button>
+      </div>
+      <div class="grid kpis">
+        <div class="card kpi"><div class="label">โครงการที่ดำเนินการ</div><div class="val">12</div><div class="delta muted">เสร็จปีนี้ 5 โครงการ</div></div>
+        <div class="card kpi"><div class="label">มูลค่างานรวม</div><div class="val">฿486.2M</div><div class="delta up">▲ เบิกแล้ว 58%</div></div>
+        <div class="card kpi"><div class="label">โครงการล่าช้ากว่าแผน</div><div class="val" style="color:var(--bad)">3</div><div class="delta down">▼ เฉลี่ยช้า 4.2%</div></div>
+        <div class="card kpi"><div class="label">ปัญหาค้าง / RFI รอตอบ</div><div class="val">7 / 14</div><div class="delta muted">เกินกำหนด 2 รายการ</div></div>
+      </div>
+      <div class="grid two">
+        <div class="card">
+          <h3>สถานะโครงการ</h3>
+          <table>
+            <thead><tr><th>โครงการ</th><th class="hide-sm">ผู้จัดการ</th><th>ความคืบหน้า (จริง / แผน)</th><th>สถานะ</th></tr></thead>
+            <tbody id="ptable"></tbody>
+          </table>
+        </div>
+        <div class="card">
+          <h3>ต้องดำเนินการ</h3>
+          <div class="list">
+            <div class="li"><span class="dot" style="background:var(--bad)"></span><div><div>RFI-031 รายละเอียดเหล็กเสริมคาน B12</div><div class="small muted">อาคาร A · เกินกำหนด 2 วัน</div></div></div>
+            <div class="li"><span class="dot" style="background:var(--warn)"></span><div><div>อนุมัติ Submittal วัสดุกระเบื้อง</div><div class="small muted">คอนโด The Rise · ครบกำหนดพรุ่งนี้</div></div></div>
+            <div class="li"><span class="dot" style="background:var(--warn)"></span><div><div>รายงานประจำวันยังไม่ส่ง 2 ไซต์</div><div class="small muted">โรงงานบางปู, ถนน ทล.32</div></div></div>
+            <div class="li"><span class="dot" style="background:var(--primary)"></span><div><div>ประชุมสรุปงวดงานที่ 6</div><div class="small muted">30 ต.ค. · 10:00</div></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PROJECT DETAIL -->
+    <section class="view page" id="v-project">
+      <div class="head">
+        <div><div class="small muted">โครงการ / PRJ-2569-004</div><h1>อาคารสำนักงาน 8 ชั้น – สาขาบางนา</h1><p class="sub">ผู้จัดการ: คุณสมชาย · สัญญา 1 ก.พ. 69 – 31 ม.ค. 70 · มูลค่า ฿128.5M</p></div>
+        <div style="display:flex;gap:8px"><button class="btn">ส่งออก PDF</button><button class="btn primary">อัปเดตความคืบหน้า</button></div>
+      </div>
+      <div class="tabs"><button class="tab active">ภาพรวม</button><button class="tab">แผนงาน (Gantt)</button><button class="tab">งบประมาณ / BOQ</button><button class="tab">เอกสาร</button><button class="tab">ทีมงาน</button><button class="tab">รูปภาพ</button></div>
+      <div class="grid kpis">
+        <div class="card kpi"><div class="label">ความคืบหน้าจริง</div><div class="val">61.4%</div><div class="delta down">▼ ช้ากว่าแผน 3.6%</div></div>
+        <div class="card kpi"><div class="label">ระยะเวลาผ่านไป</div><div class="val">272<span class="muted" style="font-size:16px"> / 365 วัน</span></div><div class="delta muted">เหลือ 93 วัน</div></div>
+        <div class="card kpi"><div class="label">ต้นทุนจริง / งบ</div><div class="val">฿74.1M</div><div class="delta up">▲ ต่ำกว่างบ 2.1%</div></div>
+        <div class="card kpi"><div class="label">อุบัติเหตุ (วันปลอดภัย)</div><div class="val">146 วัน</div><div class="delta up">▲ ไม่มีเหตุร้ายแรง</div></div>
+      </div>
+      <div class="grid two">
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px"><h3 style="margin:0">S-Curve ความคืบหน้าสะสม</h3><div class="legend"><span style="color:var(--muted)">แผน</span><span style="color:var(--primary)">จริง</span></div></div>
+          <svg id="scurve" viewBox="0 0 600 240" width="100%" role="img" aria-label="S-curve แผนเทียบจริง"></svg>
+        </div>
+        <div class="card">
+          <h3>แผนงานหลัก</h3>
+          <div class="gantt" id="gantt"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- DAILY REPORT -->
+    <section class="view page" id="v-daily">
+      <div class="head"><div><h1>รายงานประจำวัน (Site Diary)</h1><p class="sub">ออกแบบให้กรอกบนมือถือที่หน้างานได้ภายใน 3 นาที</p></div><button class="btn">ดูประวัติ</button></div>
+      <div class="grid two">
+        <div class="card">
+          <div class="form-grid">
+            <div><label>โครงการ</label><select class="input"><option>อาคารสำนักงาน 8 ชั้น – บางนา</option><option>คอนโด The Rise</option></select></div>
+            <div><label>วันที่</label><input class="input" type="date" value="2026-10-28"></div>
+            <div><label>สภาพอากาศ</label><div class="chips" data-single><button class="chip on">☀️ แจ่มใส</button><button class="chip">⛅ มีเมฆ</button><button class="chip">🌧️ ฝนตก</button></div></div>
+            <div><label>แรงงาน (คน)</label><input class="input" type="number" value="84"></div>
+            <div style="grid-column:1/-1"><label>งานที่ทำวันนี้</label><textarea class="input">เทพื้นชั้น 6 โซน B (42 ลบ.ม.), ผูกเหล็กเสา ชั้น 7, ติดตั้งท่อ งานระบบชั้น 4</textarea></div>
+            <div style="grid-column:1/-1"><label>เครื่องจักร</label><div class="chips"><button class="chip on">ทาวเวอร์เครน</button><button class="chip on">ปั๊มคอนกรีต</button><button class="chip">รถแบ็คโฮ</button><button class="chip">นั่งร้าน</button></div></div>
+            <div style="grid-column:1/-1"><label>รูปถ่ายหน้างาน (แนบพิกัด + เวลาอัตโนมัติ)</label><div class="photos"><div class="ph img"></div><div class="ph img"></div><div class="ph img"></div><div class="ph">+ เพิ่ม</div></div></div>
+            <div style="grid-column:1/-1"><label>ปัญหา / อุปสรรค</label><textarea class="input" placeholder="เช่น วัสดุมาไม่ตรงเวลา, รอแบบแก้ไข..."></textarea></div>
+          </div>
+          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px"><button class="btn">บันทึกร่าง</button><button class="btn primary">ส่งรายงาน</button></div>
+        </div>
+        <div class="card">
+          <h3>สรุป 7 วันล่าสุด</h3>
+          <div class="list" id="week"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ISSUES -->
+    <section class="view page" id="v-issues">
+      <div class="head"><div><h1>ปัญหา / ความปลอดภัย / RFI</h1><p class="sub">ติดตามทุกเรื่องจนปิดงาน พร้อมผู้รับผิดชอบและกำหนดเสร็จ</p></div><button class="btn primary">+ แจ้งเรื่องใหม่</button></div>
+      <div class="grid three" id="kanban"></div>
+    </section>
+
+    <!-- DOCS -->
+    <section class="view page" id="v-docs">
+      <div class="head"><div><h1>ศูนย์เอกสาร</h1><p class="sub">แหล่งเดียวสำหรับแบบ สัญญา และเอกสารทุกฉบับ — มีเวอร์ชันและสิทธิ์การเข้าถึง</p></div><button class="btn primary">อัปโหลด</button></div>
+      <div class="grid three">
+        <div class="folder"><div class="ficon" style="background:var(--primary-soft);color:var(--primary)">DWG</div><div><b>แบบก่อสร้าง</b><div class="small muted">248 ไฟล์ · Rev. ล่าสุด C</div></div></div>
+        <div class="folder"><div class="ficon" style="background:var(--ok-soft);color:var(--ok)">CON</div><div><b>สัญญา / VO</b><div class="small muted">36 ไฟล์</div></div></div>
+        <div class="folder"><div class="ficon" style="background:var(--warn-soft);color:var(--warn)">RFI</div><div><b>RFI / Submittal</b><div class="small muted">92 รายการ · รอ 14</div></div></div>
+        <div class="folder"><div class="ficon" style="background:var(--bad-soft);color:var(--bad)">QC</div><div><b>ตรวจสอบคุณภาพ</b><div class="small muted">ใบตรวจงาน, ผลทดสอบ</div></div></div>
+        <div class="folder"><div class="ficon" style="background:var(--surface-2);color:var(--muted)">MOM</div><div><b>บันทึกการประชุม</b><div class="small muted">54 ไฟล์</div></div></div>
+        <div class="folder"><div class="ficon" style="background:var(--surface-2);color:var(--muted)">INV</div><div><b>งวดงาน / ใบแจ้งหนี้</b><div class="small muted">18 งวด</div></div></div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h3>อัปเดตล่าสุด</h3>
+        <table><thead><tr><th>ไฟล์</th><th class="hide-sm">โครงการ</th><th>Rev.</th><th class="hide-sm">โดย</th><th>สถานะ</th></tr></thead>
+        <tbody>
+          <tr><td>A-201 แปลนชั้น 6.pdf</td><td class="hide-sm">อาคารบางนา</td><td>C</td><td class="hide-sm">สถาปนิก</td><td><span class="pill ok">อนุมัติ</span></td></tr>
+          <tr><td>S-115 รายละเอียดคาน.dwg</td><td class="hide-sm">อาคารบางนา</td><td>B</td><td class="hide-sm">วิศวกรโครงสร้าง</td><td><span class="pill warn">รอตรวจ</span></td></tr>
+          <tr><td>VO-07 เพิ่มงานหลังคา.pdf</td><td class="hide-sm">โรงงานบางปู</td><td>A</td><td class="hide-sm">QS</td><td><span class="pill info">ส่งเจ้าของ</span></td></tr>
+        </tbody></table>
+      </div>
+    </section>
+
+    <!-- REPORTS -->
+    <section class="view page" id="v-reports">
+      <div class="head"><div><h1>รายงาน</h1><p class="sub">สร้างอัตโนมัติจากข้อมูลหน้างาน — ไม่ต้องทำ Excel ซ้ำ</p></div></div>
+      <div class="grid three">
+        <div class="card"><h3>รายงานสัปดาห์ (Weekly)</h3><p class="muted">ความคืบหน้า, รูปภาพ, ปัญหา สรุปให้เจ้าของงาน</p><button class="btn">สร้าง PDF</button></div>
+        <div class="card"><h3>รายงานเดือนผู้บริหาร</h3><p class="muted">ภาพรวมทุกโครงการ, กระแสเงินสด, ความเสี่ยง</p><button class="btn">สร้าง PDF</button></div>
+        <div class="card"><h3>รายงานงวดงาน</h3><p class="muted">ปริมาณงานตาม BOQ เพื่อขอเบิกงวด</p><button class="btn">ส่งออก Excel</button></div>
+        <div class="card"><h3>รายงานความปลอดภัย</h3><p class="muted">อุบัติเหตุ, Near miss, การอบรม</p><button class="btn">สร้าง PDF</button></div>
+        <div class="card"><h3>ต้นทุนเทียบงบ</h3><p class="muted">แยกตามหมวดงาน / ผู้รับเหมาช่วง</p><button class="btn">ส่งออก Excel</button></div>
+        <div class="card"><h3>แรงงาน & เครื่องจักร</h3><p class="muted">สถิติรายวันจาก Site Diary</p><button class="btn">ดูกราฟ</button></div>
+      </div>
+      <div class="note">💡 Prototype นี้ใช้ข้อมูลตัวอย่าง — คลิกเมนูซ้ายเพื่อดูแต่ละหน้า, ลองย่อหน้าจอเพื่อดูมุมมองมือถือ</div>
+    </section>
+  </main>
+</div>
+
+<script>
+const projects=[
+  {n:"อาคารสำนักงาน 8 ชั้น – บางนา",c:"PRJ-004 · ฿128.5M",pm:"สมชาย",a:61,p:65,s:["warn","ช้าเล็กน้อย"]},
+  {n:"คอนโด The Rise 24 ชั้น",c:"PRJ-002 · ฿212.0M",pm:"วิภา",a:38,p:36,s:["ok","ตามแผน"]},
+  {n:"โรงงานบางปู เฟส 2",c:"PRJ-006 · ฿64.3M",pm:"ธนา",a:72,p:81,s:["bad","ล่าช้า"]},
+  {n:"ถนน ทล.32 ช่วง กม.12–18",c:"PRJ-007 · ฿48.9M",pm:"ประเสริฐ",a:24,p:22,s:["ok","ตามแผน"]},
+  {n:"ศูนย์กระจายสินค้า วังน้อย",c:"PRJ-009 · ฿32.5M",pm:"กมล",a:90,p:94,s:["warn","ช้าเล็กน้อย"]},
+];
+document.getElementById("ptable").innerHTML=projects.map(p=>`<tr data-go="project">
+<td><div class="pname">${p.n}</div><div class="pmeta">${p.c}</div></td>
+<td class="hide-sm">${p.pm}</td>
+<td><div style="display:flex;align-items:center;gap:8px"><div class="bar" style="flex:1"><i style="width:${p.a}%"></i><b style="left:${p.p}%"></b></div><span class="small" style="font-variant-numeric:tabular-nums">${p.a}/${p.p}%</span></div></td>
+<td><span class="pill ${p.s[0]}">${p.s[1]}</span></td></tr>`).join("");
+
+// S-curve
+(function(){
+  const W=600,H=240,L=36,B=24,T=10,R=10,months=12,now=9;
+  const plan=[0,3,8,15,24,34,45,56,65,76,86,94,100];
+  const act=[0,2,7,13,21,31,41,52,61.4];
+  const x=i=>L+i*(W-L-R)/months, y=v=>H-B-v*(H-B-T)/100;
+  const path=a=>a.map((v,i)=>(i?"L":"M")+x(i).toFixed(1)+" "+y(v).toFixed(1)).join(" ");
+  const m=["ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค.","ม.ค."];
+  let s="";
+  [0,25,50,75,100].forEach(v=>s+=`<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--border)"/><text x="${L-6}" y="${y(v)+4}" text-anchor="end" font-size="10" fill="var(--muted)">${v}%</text>`);
+  m.forEach((t,i)=>{if(i%2===0)s+=`<text x="${x(i+.5)}" y="${H-6}" text-anchor="middle" font-size="10" fill="var(--muted)">${t}</text>`});
+  s+=`<line x1="${x(now-1)}" x2="${x(now-1)}" y1="${T}" y2="${H-B}" stroke="var(--bad)" stroke-dasharray="3 3"/>`;
+  s+=`<path d="${path(plan)}" fill="none" stroke="var(--muted)" stroke-width="2" stroke-dasharray="5 4"/>`;
+  s+=`<path d="${path(act)}" fill="none" stroke="var(--primary)" stroke-width="2.5"/>`;
+  s+=`<circle cx="${x(8)}" cy="${y(61.4)}" r="4" fill="var(--primary)"/><text x="${x(8)-8}" y="${y(61.4)-8}" text-anchor="end" font-size="11" font-weight="600" fill="var(--primary)">61.4%</text>`;
+  document.getElementById("scurve").innerHTML=s;
+})();
+
+// Gantt
+const tasks=[["งานฐานราก",0,20,100],["โครงสร้าง ชั้น 1–4",15,45,100],["โครงสร้าง ชั้น 5–8",40,72,70],["งานสถาปัตย์",45,92,35],["งานระบบ MEP",50,95,30],["ส่งมอบ / ทดสอบ",90,100,0]];
+document.getElementById("gantt").innerHTML=tasks.map(t=>`<div class="row"><div class="nm">${t[0]}</div><div class="tl"><div class="today" style="left:74%"></div><div class="tk" style="left:${t[1]}%;width:${t[2]-t[1]}%"><i style="width:${t[3]}%"></i></div></div></div>`).join("");
+
+// Week summary
+const week=[["28 ต.ค.","84 คน · เทพื้นชั้น 6","info","วันนี้"],["27 ต.ค.","79 คน · ผูกเหล็กชั้น 7","ok","ส่งแล้ว"],["26 ต.ค.","ฝนตก หยุดงานบ่าย","warn","มีปัญหา"],["25 ต.ค.","81 คน · แบบหล่อชั้น 6","ok","ส่งแล้ว"],["24 ต.ค.","77 คน · งานระบบชั้น 4","ok","ส่งแล้ว"]];
+document.getElementById("week").innerHTML=week.map(w=>`<div class="li" style="justify-content:space-between;align-items:center"><div><b>${w[0]}</b><div class="small muted">${w[1]}</div></div><span class="pill ${w[2]}">${w[3]}</span></div>`).join("");
+
+// Kanban
+const cols=[["เปิดใหม่","bad",[["RFI-031 เหล็กเสริมคาน B12","อาคารบางนา · เกินกำหนด 2 วัน"],["นั่งร้านชั้น 7 ไม่มีราวกันตก","ความปลอดภัย · ด่วน"],["ท่อประปาชั้น 3 รั่ว","คอนโด The Rise"]]],["กำลังแก้ไข","warn",[["รอแบบแก้ไขบันไดหนีไฟ","อาคารบางนา · คุณวิภา"],["คอนกรีตเทไม่ได้ Slump","โรงงานบางปู · QC"]]],["ปิดแล้ว","ok",[["ปรับระดับถนนช่วง กม.14","ถนน ทล.32"],["อบรม Toolbox talk ประจำเดือน","ทุกไซต์"]]]];
+document.getElementById("kanban").innerHTML=cols.map(c=>`<div class="card" style="background:var(--surface-2)"><h3><span class="pill ${c[1]}">${c[0]} · ${c[2].length}</span></h3>${c[2].map(i=>`<div class="card" style="padding:12px;margin-bottom:10px"><div style="font-weight:500">${i[0]}</div><div class="small muted">${i[1]}</div></div>`).join("")}</div>`).join("");
+
+// Navigation
+function go(v){
+  document.querySelectorAll(".view").forEach(e=>e.classList.toggle("active",e.id==="v-"+v));
+  document.querySelectorAll(".nav").forEach(e=>e.classList.toggle("active",e.dataset.view===v));
+  document.getElementById("side").classList.remove("open");
+  window.scrollTo(0,0);
+}
+document.querySelectorAll(".nav").forEach(b=>b.onclick=()=>go(b.dataset.view));
+document.querySelectorAll("[data-go]").forEach(r=>r.onclick=()=>go(r.dataset.go));
+document.getElementById("menu").onclick=()=>document.getElementById("side").classList.toggle("open");
+document.querySelectorAll(".chip").forEach(c=>c.onclick=()=>{
+  if(c.parentElement.hasAttribute("data-single"))c.parentElement.querySelectorAll(".chip").forEach(x=>x.classList.remove("on"));
+  c.classList.toggle("on");
+});
+document.querySelectorAll(".tabs").forEach(t=>t.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{t.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));b.classList.add("active")}));
+document.getElementById("theme").onclick=()=>{
+  const r=document.documentElement,dark=r.dataset.theme?r.dataset.theme==="dark":matchMedia("(prefers-color-scheme: dark)").matches;
+  r.dataset.theme=dark?"light":"dark";
+};
+</script>
+</body>
+</html>

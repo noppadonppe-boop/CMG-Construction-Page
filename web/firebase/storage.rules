@@ -1,0 +1,10 @@
+rules_version = '2';
+
+// รูปหน้างานอัปโหลดและเปิดดูผ่าน server เท่านั้น (เปิดดูด้วย signed URL อายุ 1 ชั่วโมง)
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

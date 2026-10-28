@@ -1,0 +1,128 @@
+"use client";
+
+import { useEffect, useRef, useState, useTransition, type FormEvent } from "react";
+import { useAuth } from "@/lib/auth/context";
+import {
+  FORM_CATEGORIES,
+  FORM_CATEGORY_KEYS,
+  newFormStandardId,
+  saveFormStandard,
+  type FormStandard,
+  type FormStandardInput,
+} from "@/lib/db/form-standards";
+import { firebaseErrorMessage } from "@/lib/firebase/errors";
+import { formatFileSize } from "@/lib/format";
+import { FilePicker, useDocumentFile } from "../documents/file-upload";
+
+/** เพิ่มแบบฟอร์มใหม่ (ไม่ส่ง form) หรือแก้/อัปโหลดฉบับใหม่ — เปิดเป็น modal ทันทีที่ render */
+export function FormStandardDialog({ form, onClose }: { form?: FormStandard; onClose: () => void }) {
+  const { userProfile } = useAuth();
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  // id ของแบบฟอร์มใหม่สร้างครั้งเดียว — ไฟล์จะอยู่ในโฟลเดอร์ของ id นี้
+  const [id] = useState(() => form?.id ?? newFormStandardId());
+  const [v, setV] = useState<FormStandardInput>(
+    form ?? { code: "", name: "", category: "general", description: "", rev: "0", link: "" },
+  );
+  const set = (patch: Partial<FormStandardInput>) => setV((prev) => ({ ...prev, ...patch }));
+  const { file, setFile, progress, setProgress } = useDocumentFile();
+  const [removeFile, setRemoveFile] = useState(false);
+  const [error, setError] = useState<string>();
+  const [pending, startTransition] = useTransition();
+  const keepsFile = Boolean(form?.file && !removeFile);
+
+  useEffect(() => {
+    if (!dialogRef.current?.open) dialogRef.current?.showModal();
+  }, []);
+
+  function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    const input = { ...v, code: v.code.trim().toUpperCase(), name: v.name.trim(), description: v.description.trim(), rev: v.rev.trim(), link: v.link.trim() };
+    if (!input.name) return setError("กรุณาใส่ชื่อแบบฟอร์ม");
+    if (input.link && !/^https?:\/\//i.test(input.link)) return setError("ลิงก์ต้องขึ้นต้นด้วย http:// หรือ https://");
+    if (!file && !keepsFile && !input.link) return setError("กรุณาอัปโหลดไฟล์ หรือใส่ลิงก์แบบฟอร์ม");
+    startTransition(async () => {
+      try {
+        await saveFormStandard(id, form, input, file, removeFile, userProfile!.email, setProgress);
+        dialogRef.current?.close();
+      } catch (err) {
+        setProgress(null);
+        setError("บันทึกไม่สำเร็จ: " + firebaseErrorMessage(err));
+      }
+    });
+  }
+
+  return (
+    <dialog
+      ref={dialogRef}
+      onClose={onClose}
+      className="m-auto max-h-[calc(100dvh-2rem)] w-[min(34rem,calc(100vw-2rem))] rounded-2xl border border-border bg-surface p-0 text-text backdrop:bg-black/50"
+    >
+      <form onSubmit={onSubmit}>
+        <div className="flex items-center gap-3 border-b border-border px-5 py-4">
+          <div className="grid size-9 place-items-center rounded-lg bg-primary-soft text-lg">{FORM_CATEGORIES[v.category].icon}</div>
+          <h2 className="flex-1 font-bold">{form ? "แก้ไขแบบฟอร์ม" : "เพิ่มแบบฟอร์มมาตรฐาน"}</h2>
+          <button type="button" className="text-xl text-muted hover:text-text" aria-label="ปิด" onClick={() => dialogRef.current?.close()}>
+            ×
+          </button>
+        </div>
+
+        <div className="space-y-4 px-5 py-4">
+          <div className="grid grid-cols-[1fr_6rem] gap-3">
+            <div>
+              <label className="label" htmlFor="fs-code">เลขที่แบบฟอร์ม</label>
+              <input id="fs-code" className="input font-mono uppercase" value={v.code} onChange={(e) => set({ code: e.target.value })} maxLength={30} placeholder="เช่น FM-QC-001" />
+            </div>
+            <div>
+              <label className="label" htmlFor="fs-rev">Rev.</label>
+              <input id="fs-rev" className="input" value={v.rev} onChange={(e) => set({ rev: e.target.value })} maxLength={10} />
+            </div>
+          </div>
+          <div>
+            <label className="label" htmlFor="fs-name">ชื่อแบบฟอร์ม *</label>
+            <input id="fs-name" className="input" value={v.name} onChange={(e) => set({ name: e.target.value })} maxLength={120} placeholder="เช่น ใบขออนุมัติเทคอนกรีต" />
+          </div>
+          <div>
+            <label className="label" htmlFor="fs-cat">หมวด</label>
+            <select id="fs-cat" className="input" value={v.category} onChange={(e) => set({ category: e.target.value as FormStandardInput["category"] })}>
+              {FORM_CATEGORY_KEYS.map((c) => (
+                <option key={c} value={c}>{FORM_CATEGORIES[c].icon} {FORM_CATEGORIES[c].label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="label" htmlFor="fs-desc">คำอธิบาย / วิธีใช้</label>
+            <textarea id="fs-desc" className="input" rows={2} value={v.description} onChange={(e) => set({ description: e.target.value })} maxLength={300} />
+          </div>
+
+          <div>
+            <div className="label">ไฟล์แบบฟอร์ม</div>
+            {keepsFile && !file && (
+              <div className="mb-2 flex items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm">
+                <span>📄</span>
+                <a href={form!.file!.url} target="_blank" rel="noopener noreferrer" className="flex-1 truncate text-primary hover:underline">
+                  {form!.file!.file_name}
+                </a>
+                <span className="text-xs text-muted">{formatFileSize(form!.file!.size)}</span>
+                <button type="button" className="text-xs text-bad hover:underline" onClick={() => setRemoveFile(true)}>เอาออก</button>
+              </div>
+            )}
+            <FilePicker file={file} onFile={setFile} progress={progress} />
+            {form?.file && <p className="mt-1 text-xs text-muted">อัปโหลดไฟล์ใหม่ = แทนที่ไฟล์เดิม (อย่าลืมเปลี่ยน Rev.)</p>}
+          </div>
+          <div>
+            <label className="label" htmlFor="fs-link">หรือลิงก์ (Google Drive / เว็บ)</label>
+            <input id="fs-link" className="input font-mono" value={v.link} onChange={(e) => set({ link: e.target.value })} placeholder="https://drive.google.com/..." inputMode="url" />
+            <p className="mt-1 text-xs text-muted">ถ้ามีทั้งไฟล์และลิงก์ จะเปิดไฟล์ที่อัปโหลดก่อน</p>
+          </div>
+
+          {error && <p className="rounded-lg bg-bad-soft px-3 py-2 text-sm text-bad">{error}</p>}
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
+          <button type="button" className="btn" onClick={() => dialogRef.current?.close()}>ยกเลิก</button>
+          <button className="btn btn-primary" disabled={pending}>{pending ? "กำลังบันทึก..." : form ? "บันทึก" : "เพิ่มแบบฟอร์ม"}</button>
+        </div>
+      </form>
+    </dialog>
+  );
+}
