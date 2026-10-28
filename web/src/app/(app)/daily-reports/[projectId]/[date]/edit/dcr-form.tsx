@@ -34,6 +34,7 @@ import { useSubmitOnce } from "@/lib/use-submit-once";
 import { compress } from "@/components/photo-picker";
 import { CompanyLogo } from "@/components/company-logo";
 import { ConflictNotice } from "@/components/conflict-notice";
+import type { DailyReportStandardSnapshot } from "@/lib/daily-report-standard";
 
 type NewPhoto = { id: string; file: File; preview: string; caption: string };
 
@@ -51,16 +52,18 @@ export function DcrForm({
   existing,
   date,
   live,
+  standard,
 }: {
   project: ProjectRecord;
   settings: DcrSettings;
   existing: DcrRecord | null;
   date: string;
   live: DcrRecord | null;
+  standard: DailyReportStandardSnapshot | null;
 }) {
   const router = useRouter();
   const { userProfile } = useAuth();
-  const [data, setData] = useState<DcrData>(() => stripRecord(existing) ?? blankReport(date, settings));
+  const [data, setData] = useState<DcrData>(() => stripRecord(existing) ?? blankReport(date, settings, standard));
   const [baseVersion, setBaseVersion] = useState<number | null>(existing && !existing.legacy ? existing.version : null);
   const [newPhotos, setNewPhotos] = useState<Record<string, NewPhoto[]>>({});
   const [removedPaths, setRemovedPaths] = useState<string[]>([]);
@@ -116,7 +119,9 @@ export function DcrForm({
     setConflict(null);
     run(async () => {
       try {
-        const result = await saveDcr(project.id, data, {
+        // เก็บมาตรฐานที่ใช้เป็น snapshot ตั้งแต่บันทึกครั้งแรก เพื่อไม่ให้ประวัติรายงานเปลี่ยนตามคลังแบบฟอร์ม
+        const dataToSave = data.form_standard === appliedStandard ? data : { ...data, form_standard: appliedStandard };
+        const result = await saveDcr(project.id, dataToSave, {
           baseVersion: force ? (live?.version ?? baseVersion) : baseVersion,
           actor: userProfile.email,
           force,
@@ -126,7 +131,7 @@ export function DcrForm({
         Object.values(newPhotos).flat().forEach((p) => URL.revokeObjectURL(p.preview));
         setNewPhotos({});
         setRemovedPaths([]);
-        setData((d) => ({ ...d, report_no: result.reportNo, progress: result.progress }));
+        setData((d) => ({ ...d, report_no: result.reportNo, progress: result.progress, form_standard: dataToSave.form_standard }));
         setBaseVersion(result.version);
         try {
           localStorage.removeItem(key);
@@ -148,6 +153,7 @@ export function DcrForm({
 
   const consultants = settings.consultants.map((c) => c.name).filter(Boolean).join(", ") || "—";
   const subsToday = settings.subcontractors.filter((s) => data.subcontractors_today.includes(s.id));
+  const appliedStandard = data.form_standard ?? standard;
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_200px]">
@@ -173,6 +179,16 @@ export function DcrForm({
         {locked && <Banner tone="warn">รายงานนี้ผ่านการตรวจแล้ว แก้ไขไม่ได้ — ผู้ตรวจต้อง “ตีกลับแก้ไข” ก่อน</Banner>}
         <ConflictNotice remoteChange={remoteChange} conflictMessage={conflict} onReload={() => { if (live) { setData(stripRecord(live)!); setBaseVersion(live.version); setConflict(null); } }} onForceSave={() => save(false, true)} busy={pending} />
         {notice && <Banner tone="ok">{notice}</Banner>}
+        {appliedStandard ? (
+          <div className="rounded-lg border border-primary/25 bg-primary-soft px-3 py-2 text-sm text-primary">
+            <b>มาตรฐานที่ใช้:</b> {appliedStandard.name}{appliedStandard.code && ` (${appliedStandard.code})`}{appliedStandard.rev && ` · Rev. ${appliedStandard.rev}`}
+            <span className="ml-2 text-xs">บันทึกชื่อมาตรฐานนี้ไว้กับรายงานฉบับนี้</span>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-muted">
+            รายงานนี้ใช้รูปแบบพื้นฐานของระบบ — กำหนดมาตรฐานรายงานประจำวันได้ที่ <Link href={`/projects/${project.id}`} className="text-primary hover:underline">รายละเอียดโครงการ</Link>
+          </div>
+        )}
 
         <fieldset disabled={locked} className="space-y-3">
           {/* 1 */}

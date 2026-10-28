@@ -3,15 +3,25 @@
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import { useAuth } from "@/lib/auth/context";
-import { deleteFormStandard, FORM_CATEGORIES, FORM_CATEGORY_KEYS, useFormStandards, type FormCategory, type FormStandard } from "@/lib/db/form-standards";
+import {
+  createDailyReportStandard,
+  deleteFormStandard,
+  FORM_CATEGORIES,
+  FORM_CATEGORY_KEYS,
+  isDailyReportStandard,
+  useFormStandards,
+  type FormCategory,
+  type FormStandard,
+} from "@/lib/db/form-standards";
 import { useProjects } from "@/lib/db/projects";
 import { firebaseErrorMessage } from "@/lib/firebase/errors";
 import { EmptyState, PageHeader, Skeleton } from "@/components/ui";
 import { FormStandardRow } from "@/components/form-standard-row";
+import { DailyReportStandardPreview } from "@/components/daily-report-standard-preview";
 import { FormStandardDialog } from "./form-dialog";
 
 export default function FormStandardsPage() {
-  const { can } = useAuth();
+  const { can, userProfile } = useAuth();
   const manage = can("form.manage");
   const { forms, loading, error } = useFormStandards();
   const { projects } = useProjects();
@@ -33,6 +43,19 @@ export default function FormStandardsPage() {
   const matched = forms.filter((f) => !q || `${f.code} ${f.name} ${f.description}`.toLowerCase().includes(q));
   const shown = category ? matched.filter((f) => f.category === category) : matched;
   const groups = FORM_CATEGORY_KEYS.map((c) => ({ c, items: shown.filter((f) => f.category === c) })).filter((g) => g.items.length > 0);
+  const dailyStandard = forms.find(isDailyReportStandard) ?? null;
+
+  function addDailyStandard() {
+    if (!userProfile || dailyStandard) return;
+    startTransition(async () => {
+      try {
+        await createDailyReportStandard(userProfile.email);
+        setActionError(undefined);
+      } catch (e) {
+        setActionError("เพิ่มมาตรฐานรายงานประจำวันไม่สำเร็จ: " + firebaseErrorMessage(e));
+      }
+    });
+  }
 
   function remove(form: FormStandard) {
     const n = usedBy.get(form.id)?.length ?? 0;
@@ -51,9 +74,11 @@ export default function FormStandardsPage() {
     <>
       <PageHeader
         title="มาตรฐานแบบฟอร์ม"
-        subtitle="คลังแบบฟอร์มกลางของบริษัท · แต่ละโครงการเลือกแบบฟอร์มที่ใช้ได้ที่หน้ารายละเอียดโครงการ"
+        subtitle="คลังแบบฟอร์มกลางของบริษัท · เพิ่มได้ทั้งไฟล์ ลิงก์ หรือออกแบบฟอร์มดิจิทัลเอง · แต่ละโครงการเลือกใช้ได้ที่หน้ารายละเอียดโครงการ"
         actions={manage && <button type="button" className="btn btn-primary" onClick={() => setEditing({})}>+ เพิ่มแบบฟอร์ม</button>}
       />
+
+      <DailyReportStandardPreview standard={dailyStandard} canManage={manage} pending={pending} onCreate={addDailyStandard} />
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <nav className="flex flex-wrap gap-1.5">

@@ -1,6 +1,8 @@
 // รายงานประจำวันงานก่อสร้าง (Daily Construction Report — DCR)
 // โครงสร้างข้อมูล + ค่าเริ่มต้น + การคำนวณ — ไม่ผูกกับ Firebase จึงใช้ได้ทั้งฟอร์ม รายงาน และสคริปต์
 
+import type { DailyReportStandardSnapshot } from "./daily-report-standard";
+
 export type StoredImage = { path: string; url: string };
 
 /** บริษัทที่เกี่ยวข้องกับโครงการ — โลโก้แสดงบนหัวรายงาน */
@@ -73,6 +75,8 @@ export type Signature = { name: string; email: string | null; at: string } | nul
 export interface DcrData {
   report_date: string;
   report_no: number;
+  /** snapshot ของมาตรฐานที่ใช้กับรายงานฉบับนี้ — ป้องกันรายงานเก่าเปลี่ยนตามมาตรฐานใหม่ */
+  form_standard: DailyReportStandardSnapshot | null;
   status: DcrStatus;
   working_hours: { start: string; end: string; overtime: string };
   subcontractors_today: string[];
@@ -117,10 +121,11 @@ export function defaultSettings(projectClient: string | null): DcrSettings {
   };
 }
 
-export function blankReport(date: string, settings: DcrSettings): DcrData {
+export function blankReport(date: string, settings: DcrSettings, formStandard: DailyReportStandardSnapshot | null = null): DcrData {
   return {
     report_date: date,
     report_no: 0,
+    form_standard: formStandard,
     status: "draft",
     working_hours: { ...settings.working_hours, overtime: "" },
     subcontractors_today: settings.subcontractors.map((s) => s.id),

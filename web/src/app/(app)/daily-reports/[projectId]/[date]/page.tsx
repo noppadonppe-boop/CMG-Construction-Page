@@ -94,6 +94,7 @@ function DcrView() {
           <Link href="/daily-reports" className="btn">← รายงานทั้งหมด</Link>
           <Pill tone={r.status === "draft" ? "warn" : r.status === "submitted" ? "info" : "ok"}>{DCR_STATUS_LABEL[r.status]}</Pill>
           {r.legacy && <Pill tone="info">รูปแบบเดิม</Pill>}
+          {r.form_standard && <Pill tone="info">มาตรฐาน {r.form_standard.code || r.form_standard.name}</Pill>}
         </div>
         <div className="flex flex-wrap gap-2">
           {can("daily.create") && editable && !r.legacy && <Link href={`/daily-reports/${project.id}/${date}/edit`} className="btn">แก้ไข</Link>}
@@ -112,6 +113,7 @@ function DcrView() {
           <div>
             <div className="text-lg font-bold">รายงานประจำวัน · Daily construction report</div>
             <div className="text-muted">{project.name} ({project.code})</div>
+            {r.form_standard && <div className="mt-1 text-[11px] text-primary">มาตรฐานแบบฟอร์ม: {r.form_standard.name}{r.form_standard.code && ` · ${r.form_standard.code}`}{r.form_standard.rev && ` · Rev. ${r.form_standard.rev}`}</div>}
           </div>
           <div className="text-right">
             <div className="font-semibold">Report no. {code}</div>
@@ -241,7 +243,7 @@ function DcrView() {
         </div>
         <footer className="mt-4 flex justify-between border-t border-border pt-1 text-[11px] text-muted">
           <span>CMG Project Hub · {code}</span>
-          <span>{photos.length > 4 ? "มีภาคผนวกรูปถ่ายหน้าถัดไป" : ""}</span>
+          <span>{[r.form_standard ? `มาตรฐาน ${r.form_standard.code || r.form_standard.name}` : "", photos.length > 4 ? "มีภาคผนวกรูปถ่ายหน้าถัดไป" : ""].filter(Boolean).join(" · ")}</span>
         </footer>
 
         {/* ภาคผนวกรูปถ่าย: ขึ้นหน้าใหม่เมื่อพิมพ์ */}

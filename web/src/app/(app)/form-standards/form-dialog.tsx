@@ -5,13 +5,16 @@ import { useAuth } from "@/lib/auth/context";
 import {
   FORM_CATEGORIES,
   FORM_CATEGORY_KEYS,
+  isDailyReportStandard,
   newFormStandardId,
   saveFormStandard,
   type FormStandard,
   type FormStandardInput,
 } from "@/lib/db/form-standards";
+import { blankDigitalFormSchema } from "@/lib/form-schema";
 import { firebaseErrorMessage } from "@/lib/firebase/errors";
 import { formatFileSize } from "@/lib/format";
+import { CustomFormBuilder } from "@/components/custom-form-builder";
 import { FilePicker, useDocumentFile } from "../documents/file-upload";
 
 /** เพิ่มแบบฟอร์มใหม่ (ไม่ส่ง form) หรือแก้/อัปโหลดฉบับใหม่ — เปิดเป็น modal ทันทีที่ render */
@@ -20,8 +23,8 @@ export function FormStandardDialog({ form, onClose }: { form?: FormStandard; onC
   const dialogRef = useRef<HTMLDialogElement>(null);
   // id ของแบบฟอร์มใหม่สร้างครั้งเดียว — ไฟล์จะอยู่ในโฟลเดอร์ของ id นี้
   const [id] = useState(() => form?.id ?? newFormStandardId());
-  const [v, setV] = useState<FormStandardInput>(
-    form ?? { code: "", name: "", category: "general", description: "", rev: "0", link: "" },
+  const [v, setV] = useState<FormStandardInput>(() =>
+    form ?? { code: "", name: "", category: "general", description: "", rev: "0", link: "", kind: "document", schema: null },
   );
   const set = (patch: Partial<FormStandardInput>) => setV((prev) => ({ ...prev, ...patch }));
   const { file, setFile, progress, setProgress } = useDocumentFile();
@@ -29,6 +32,8 @@ export function FormStandardDialog({ form, onClose }: { form?: FormStandard; onC
   const [error, setError] = useState<string>();
   const [pending, startTransition] = useTransition();
   const keepsFile = Boolean(form?.file && !removeFile);
+  const isDigitalDailyReport = Boolean(form && isDailyReportStandard(form));
+  const isCustomDigital = v.kind === "custom";
 
   useEffect(() => {
     if (!dialogRef.current?.open) dialogRef.current?.showModal();
@@ -36,10 +41,28 @@ export function FormStandardDialog({ form, onClose }: { form?: FormStandard; onC
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
-    const input = { ...v, code: v.code.trim().toUpperCase(), name: v.name.trim(), description: v.description.trim(), rev: v.rev.trim(), link: v.link.trim() };
+    const input: FormStandardInput = {
+      ...v,
+      code: v.code.trim().toUpperCase(),
+      name: v.name.trim(),
+      description: v.description.trim(),
+      rev: v.rev.trim(),
+      link: isCustomDigital ? "" : v.link.trim(),
+      kind: isDigitalDailyReport ? "daily_report" : v.kind,
+      schema: isCustomDigital ? v.schema : null,
+    };
     if (!input.name) return setError("กรุณาใส่ชื่อแบบฟอร์ม");
     if (input.link && !/^https?:\/\//i.test(input.link)) return setError("ลิงก์ต้องขึ้นต้นด้วย http:// หรือ https://");
-    if (!file && !keepsFile && !input.link) return setError("กรุณาอัปโหลดไฟล์ หรือใส่ลิงก์แบบฟอร์ม");
+    if (input.kind === "custom") {
+      const sections = input.schema?.sections ?? [];
+      const fieldCount = sections.reduce((sum, section) => sum + section.fields.length, 0);
+      if (sections.length === 0 || fieldCount === 0) return setError("กรุณาเพิ่มอย่างน้อย 1 หมวด และ 1 ฟิลด์ในแบบฟอร์มดิจิทัล");
+      if (sections.some((section) => !section.title.trim())) return setError("กรุณาตั้งชื่อให้ครบทุกหมวด");
+      if (sections.some((section) => section.fields.some((field) => !field.label.trim()))) return setError("กรุณาตั้งชื่อให้ครบทุกฟิลด์");
+      if (sections.some((section) => section.fields.some((field) => field.type === "select" && !field.options?.length))) return setError("ฟิลด์แบบตัวเลือกต้องมีรายการตัวเลือกอย่างน้อย 1 รายการ");
+      if (sections.some((section) => section.fields.some((field) => field.type === "table" && !field.columns?.length))) return setError("ฟิลด์แบบตารางต้องมีชื่อคอลัมน์อย่างน้อย 1 คอลัมน์");
+    }
+    if (input.kind === "document" && !file && !keepsFile && !input.link) return setError("กรุณาอัปโหลดไฟล์ หรือใส่ลิงก์แบบฟอร์ม");
     startTransition(async () => {
       try {
         await saveFormStandard(id, form, input, file, removeFile, userProfile!.email, setProgress);
@@ -55,9 +78,9 @@ export function FormStandardDialog({ form, onClose }: { form?: FormStandard; onC
     <dialog
       ref={dialogRef}
       onClose={onClose}
-      className="m-auto max-h-[calc(100dvh-2rem)] w-[min(34rem,calc(100vw-2rem))] rounded-2xl border border-border bg-surface p-0 text-text backdrop:bg-black/50"
+      className="m-auto max-h-[calc(100dvh-2rem)] w-[min(68rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-border bg-surface p-0 text-text backdrop:bg-black/50"
     >
-      <form onSubmit={onSubmit}>
+      <form onSubmit={onSubmit} className="flex max-h-[calc(100dvh-2rem)] flex-col">
         <div className="flex items-center gap-3 border-b border-border px-5 py-4">
           <div className="grid size-9 place-items-center rounded-lg bg-primary-soft text-lg">{FORM_CATEGORIES[v.category].icon}</div>
           <h2 className="flex-1 font-bold">{form ? "แก้ไขแบบฟอร์ม" : "เพิ่มแบบฟอร์มมาตรฐาน"}</h2>
@@ -66,7 +89,7 @@ export function FormStandardDialog({ form, onClose }: { form?: FormStandard; onC
           </button>
         </div>
 
-        <div className="space-y-4 px-5 py-4">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
           <div className="grid grid-cols-[1fr_6rem] gap-3">
             <div>
               <label className="label" htmlFor="fs-code">เลขที่แบบฟอร์ม</label>
@@ -94,26 +117,57 @@ export function FormStandardDialog({ form, onClose }: { form?: FormStandard; onC
             <textarea id="fs-desc" className="input" rows={2} value={v.description} onChange={(e) => set({ description: e.target.value })} maxLength={300} />
           </div>
 
-          <div>
-            <div className="label">ไฟล์แบบฟอร์ม</div>
-            {keepsFile && !file && (
-              <div className="mb-2 flex items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm">
-                <span>📄</span>
-                <a href={form!.file!.url} target="_blank" rel="noopener noreferrer" className="flex-1 truncate text-primary hover:underline">
-                  {form!.file!.file_name}
-                </a>
-                <span className="text-xs text-muted">{formatFileSize(form!.file!.size)}</span>
-                <button type="button" className="text-xs text-bad hover:underline" onClick={() => setRemoveFile(true)}>เอาออก</button>
+          {isDigitalDailyReport ? (
+            <div className="rounded-lg border border-primary/25 bg-primary-soft px-3 py-3 text-sm text-primary">
+              <b>ฟอร์มในระบบ</b>
+              <p className="mt-1 text-xs">แบบฟอร์มนี้ใช้หน้ารายงานประจำวันของระบบโดยตรง จึงไม่ต้องแนบไฟล์หรือลิงก์ โครงการที่เลือกแบบฟอร์มนี้จะใช้ชื่อและ revision นี้กับรายงานใหม่</p>
+            </div>
+          ) : (
+            <>
+              <div>
+                <div className="label">รูปแบบการใช้งาน</div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <label className={`cursor-pointer rounded-lg border px-3 py-2.5 ${v.kind === "document" ? "border-primary bg-primary-soft" : "border-border bg-surface-2"}`}>
+                    <input className="sr-only" type="radio" name="form-kind" checked={v.kind === "document"} onChange={() => set({ kind: "document", schema: null })} />
+                    <span className="block text-sm font-medium">เอกสาร / ไฟล์แนบ</span>
+                    <span className="mt-0.5 block text-xs text-muted">อัปโหลด PDF, Excel, Word หรือใช้ลิงก์ภายนอก</span>
+                  </label>
+                  <label className={`cursor-pointer rounded-lg border px-3 py-2.5 ${v.kind === "custom" ? "border-primary bg-primary-soft" : "border-border bg-surface-2"}`}>
+                    <input className="sr-only" type="radio" name="form-kind" checked={v.kind === "custom"} onChange={() => set({ kind: "custom", schema: v.schema ?? blankDigitalFormSchema(), link: "" })} />
+                    <span className="block text-sm font-medium">ฟอร์มดิจิทัลแบบกำหนดเอง</span>
+                    <span className="mt-0.5 block text-xs text-muted">ออกแบบหมวด ฟิลด์ ตาราง รูปภาพ และลายเซ็นในระบบ</span>
+                  </label>
+                </div>
               </div>
-            )}
-            <FilePicker file={file} onFile={setFile} progress={progress} />
-            {form?.file && <p className="mt-1 text-xs text-muted">อัปโหลดไฟล์ใหม่ = แทนที่ไฟล์เดิม (อย่าลืมเปลี่ยน Rev.)</p>}
-          </div>
-          <div>
-            <label className="label" htmlFor="fs-link">หรือลิงก์ (Google Drive / เว็บ)</label>
-            <input id="fs-link" className="input font-mono" value={v.link} onChange={(e) => set({ link: e.target.value })} placeholder="https://drive.google.com/..." inputMode="url" />
-            <p className="mt-1 text-xs text-muted">ถ้ามีทั้งไฟล์และลิงก์ จะเปิดไฟล์ที่อัปโหลดก่อน</p>
-          </div>
+
+              {isCustomDigital ? (
+                <CustomFormBuilder schema={v.schema ?? blankDigitalFormSchema()} onChange={(schema) => set({ schema })} />
+              ) : (
+                <>
+                  <div>
+                    <div className="label">ไฟล์แบบฟอร์ม</div>
+                    {keepsFile && !file && (
+                      <div className="mb-2 flex items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm">
+                        <span>📄</span>
+                        <a href={form!.file!.url} target="_blank" rel="noopener noreferrer" className="flex-1 truncate text-primary hover:underline">
+                          {form!.file!.file_name}
+                        </a>
+                        <span className="text-xs text-muted">{formatFileSize(form!.file!.size)}</span>
+                        <button type="button" className="text-xs text-bad hover:underline" onClick={() => setRemoveFile(true)}>เอาออก</button>
+                      </div>
+                    )}
+                    <FilePicker file={file} onFile={setFile} progress={progress} />
+                    {form?.file && <p className="mt-1 text-xs text-muted">อัปโหลดไฟล์ใหม่ = แทนที่ไฟล์เดิม (อย่าลืมเปลี่ยน Rev.)</p>}
+                  </div>
+                  <div>
+                    <label className="label" htmlFor="fs-link">หรือลิงก์ (Google Drive / เว็บ)</label>
+                    <input id="fs-link" className="input font-mono" value={v.link} onChange={(e) => set({ link: e.target.value })} placeholder="https://drive.google.com/..." inputMode="url" />
+                    <p className="mt-1 text-xs text-muted">ถ้ามีทั้งไฟล์และลิงก์ จะเปิดไฟล์ที่อัปโหลดก่อน</p>
+                  </div>
+                </>
+              )}
+            </>
+          )}
 
           {error && <p className="rounded-lg bg-bad-soft px-3 py-2 text-sm text-bad">{error}</p>}
         </div>

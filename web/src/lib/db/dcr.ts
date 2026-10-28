@@ -98,7 +98,7 @@ export type DcrRecord = DcrData & { version: number; updated_by: string | null; 
 export function toDcr(snap: DocumentSnapshot, settings: DcrSettings): DcrRecord | null {
   if (!snap.exists()) return null;
   const d = snap.data();
-  if (d.schema === 2) return { ...(d as DcrData), version: Number(d.version ?? 0), updated_by: d.updated_by ?? null, legacy: false };
+  if (d.schema === 2) return { ...(d as DcrData), form_standard: d.form_standard ?? null, version: Number(d.version ?? 0), updated_by: d.updated_by ?? null, legacy: false };
   // schema 1: weather / workers / work_done / equipment[] / issues / photos
   const report = blankReport(d.report_date ?? snap.id, settings);
   const sky = d.weather === "rain" ? "heavy_rain" : d.weather === "cloudy" ? "cloudy" : "clear";

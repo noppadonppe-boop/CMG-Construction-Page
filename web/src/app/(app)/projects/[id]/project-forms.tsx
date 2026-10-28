@@ -3,7 +3,15 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useAuth } from "@/lib/auth/context";
-import { FORM_CATEGORIES, FORM_CATEGORY_KEYS, setProjectFormStandards, useFormStandards, type FormStandard } from "@/lib/db/form-standards";
+import {
+  FORM_CATEGORIES,
+  FORM_CATEGORY_KEYS,
+  isDailyReportStandard,
+  projectDailyReportStandard,
+  setProjectFormStandards,
+  useFormStandards,
+  type FormStandard,
+} from "@/lib/db/form-standards";
 import type { ProjectRecord } from "@/lib/db/projects";
 import { firebaseErrorMessage } from "@/lib/firebase/errors";
 import { FormStandardRow } from "@/components/form-standard-row";
@@ -15,6 +23,7 @@ export function ProjectForms({ project }: { project: ProjectRecord }) {
   const [picking, setPicking] = useState(false);
   // แบบฟอร์มที่ถูกลบออกจากคลังแล้วจะไม่แสดง
   const selected = forms.filter((f) => project.form_standards.includes(f.id));
+  const dailyStandard = projectDailyReportStandard(forms, project.form_standards);
   const groups = FORM_CATEGORY_KEYS.map((c) => ({ c, items: selected.filter((f) => f.category === c) })).filter((g) => g.items.length > 0);
 
   return (
@@ -37,18 +46,27 @@ export function ProjectForms({ project }: { project: ProjectRecord }) {
       ) : groups.length === 0 ? (
         <p className="text-muted">ยังไม่ได้เลือกแบบฟอร์มสำหรับโครงการนี้</p>
       ) : (
-        <div className="grid gap-x-6 lg:grid-cols-2">
-          {groups.map(({ c, items }) => (
-            <div key={c}>
-              <div className="mt-2 text-xs font-semibold text-muted">{FORM_CATEGORIES[c].icon} {FORM_CATEGORIES[c].label}</div>
-              <ul className="divide-y divide-border">
-                {items.map((f) => (
-                  <FormStandardRow key={f.id} form={f} />
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
+        <>
+          <div className={`mb-3 rounded-lg border px-3 py-2 text-sm ${dailyStandard ? "border-primary/25 bg-primary-soft text-primary" : "border-border bg-surface-2 text-muted"}`}>
+            {dailyStandard ? (
+              <>รายงานประจำวันของโครงการนี้ใช้ <b>{dailyStandard.name}</b>{dailyStandard.rev && ` · Rev. ${dailyStandard.rev}`}</>
+            ) : (
+              <>ยังไม่ได้กำหนดมาตรฐานรายงานประจำวัน — รายงานใหม่จะใช้รูปแบบพื้นฐานของระบบ</>
+            )}
+          </div>
+          <div className="grid gap-x-6 lg:grid-cols-2">
+            {groups.map(({ c, items }) => (
+              <div key={c}>
+                <div className="mt-2 text-xs font-semibold text-muted">{FORM_CATEGORIES[c].icon} {FORM_CATEGORIES[c].label}</div>
+                <ul className="divide-y divide-border">
+                  {items.map((f) => (
+                    <FormStandardRow key={f.id} form={f} />
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </>
       )}
       {picking && <FormPicker project={project} forms={forms} onClose={() => setPicking(false)} />}
     </div>
@@ -62,6 +80,7 @@ function FormPicker({ project, forms, onClose }: { project: ProjectRecord; forms
   const [search, setSearch] = useState("");
   const [error, setError] = useState<string>();
   const [pending, startTransition] = useTransition();
+  const dailyIds = forms.filter(isDailyReportStandard).map((f) => f.id);
 
   useEffect(() => {
     if (!dialogRef.current?.open) dialogRef.current?.showModal();
@@ -71,10 +90,20 @@ function FormPicker({ project, forms, onClose }: { project: ProjectRecord; forms
   const shown = forms.filter((f) => !q || `${f.code} ${f.name}`.toLowerCase().includes(q));
   const groups = FORM_CATEGORY_KEYS.map((c) => ({ c, items: shown.filter((f) => f.category === c) })).filter((g) => g.items.length > 0);
 
-  const toggle = (ids: string[], on: boolean) =>
+  const toggle = (items: FormStandard[], on: boolean) =>
     setChosen((prev) => {
       const next = new Set(prev);
-      ids.forEach((id) => (on ? next.add(id) : next.delete(id)));
+      items.forEach((form) => {
+        if (!on) {
+          next.delete(form.id);
+        } else if (isDailyReportStandard(form)) {
+          // มาตรฐาน DCR เป็นรูปแบบหลักของโครงการ จึงเลือกได้เพียงหนึ่งรายการ
+          dailyIds.forEach((id) => next.delete(id));
+          next.add(form.id);
+        } else {
+          next.add(form.id);
+        }
+      });
       return next;
     });
 
@@ -98,6 +127,7 @@ function FormPicker({ project, forms, onClose }: { project: ProjectRecord; forms
       <div className="border-b border-border px-5 py-4">
         <h2 className="font-bold">เลือกมาตรฐานแบบฟอร์ม</h2>
         <p className="text-xs text-muted">{project.code} · {project.name}</p>
+        {dailyIds.length > 0 && <p className="mt-2 rounded-md bg-primary-soft px-2 py-1.5 text-xs text-primary">เลือกมาตรฐานรายงานประจำวันได้ 1 รายการต่อโครงการ ระบบจะใช้มาตรฐานนั้นกับรายงานใหม่</p>}
         <input
           type="search"
           className="input mt-3"
@@ -122,7 +152,7 @@ function FormPicker({ project, forms, onClose }: { project: ProjectRecord; forms
               <section key={c}>
                 <div className="mb-1 flex items-center justify-between">
                   <h3 className="text-sm font-semibold">{FORM_CATEGORIES[c].icon} {FORM_CATEGORIES[c].label}</h3>
-                  <button type="button" className="text-xs text-primary hover:underline" onClick={() => toggle(items.map((f) => f.id), !allOn)}>
+                  <button type="button" className="text-xs text-primary hover:underline" onClick={() => toggle(items, !allOn)}>
                     {allOn ? "ไม่เลือกทั้งหมด" : "เลือกทั้งหมด"}
                   </button>
                 </div>
@@ -130,11 +160,12 @@ function FormPicker({ project, forms, onClose }: { project: ProjectRecord; forms
                   {items.map((f) => (
                     <li key={f.id}>
                       <label className="flex cursor-pointer items-start gap-3 px-3 py-2 hover:bg-surface-2">
-                        <input type="checkbox" className="mt-1 size-4 accent-primary" checked={chosen.has(f.id)} onChange={(e) => toggle([f.id], e.target.checked)} />
+                        <input type="checkbox" className="mt-1 size-4 accent-primary" checked={chosen.has(f.id)} onChange={(e) => toggle([f], e.target.checked)} />
                         <span className="min-w-0">
                           {f.code && <span className="mr-2 font-mono text-xs text-muted">{f.code}</span>}
                           <span className="font-medium">{f.name}</span>
                           {f.rev && <span className="ml-2 text-[11px] text-muted">Rev. {f.rev}</span>}
+                          {isDailyReportStandard(f) && <span className="ml-2 rounded bg-primary-soft px-1.5 py-0.5 text-[11px] text-primary">ใช้กับรายงานประจำวัน</span>}
                           {f.description && <span className="block truncate text-xs text-muted">{f.description}</span>}
                         </span>
                       </label>
