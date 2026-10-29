@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { FormEvent } from "react";
 import { useAuth } from "@/lib/auth/context";
 import { downloadCsv } from "@/lib/csv";
@@ -35,6 +35,7 @@ export default function ReportsPage() {
 
 function Choices() {
   const router = useRouter();
+  const preset = useSearchParams().get("project") ?? undefined;
   const { can } = useAuth();
   const { projects, loading } = useProjects();
   const today = todayInBangkok();
@@ -53,7 +54,7 @@ function Choices() {
         <h3 className="font-semibold">📋 รายงานประจำสัปดาห์ (รายโครงการ)</h3>
         <p className="text-sm text-muted">ความคืบหน้า, S-Curve, งานรายวันพร้อมรูป, ปัญหาค้าง, เอกสารใหม่ — สำหรับส่งเจ้าของงาน</p>
         <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-          <select name="project" className="input" aria-label="โครงการ" required>
+          <select name="project" defaultValue={preset} className="input" aria-label="โครงการ" required>
             {projects.map((p) => (
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}

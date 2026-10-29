@@ -14,11 +14,13 @@ import { EmptyState, PageHeader, Skeleton } from "@/components/ui";
 import { Guard } from "@/components/guard";
 import { CompanyLogo } from "@/components/company-logo";
 import { ConflictNotice } from "@/components/conflict-notice";
+import { DeleteProjectButton } from "../../delete-project-button";
 
 export default function ReportSettingsPage() {
   const { id } = useParams<{ id: string }>();
   const { byId, loading } = useProjects();
   const project = byId.get(id);
+  const { can } = useAuth();
   const { settings, loading: loadingSettings } = useDcrSettings(project?.id, project?.client ?? null);
 
   if (loading || (project && loadingSettings)) return <Skeleton />;
@@ -26,10 +28,16 @@ export default function ReportSettingsPage() {
   return (
     <>
       <PageHeader
-        eyebrow={`โครงการ / ${project.code}`}
-        title="ตั้งค่ารายงานประจำวัน"
-        subtitle={`${project.name} · บริษัทและโลโก้บนหัวรายงาน, เวลาทำงาน, รายการช่างและเครื่องจักรตั้งต้น`}
-        actions={<Link href={`/projects/${project.id}`} className="btn">กลับไปโครงการ</Link>}
+        title="ตั้งค่าโครงการ"
+        subtitle="ข้อมูลโครงการ · บริษัทและโลโก้บนหัวรายงาน, เวลาทำงาน, รายการช่างและเครื่องจักรตั้งต้น"
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <Link href={`/projects/${project.id}/edit`} className="btn">แก้ไขข้อมูลโครงการ</Link>
+            {can("project.delete") && (
+              <DeleteProjectButton project={{ id: project.id, code: project.code, name: project.name }} redirectTo="/" />
+            )}
+          </div>
+        }
       />
       <Guard permission="project.edit">
         {/* key = id: ฟอร์มเริ่มจากค่าตอนเปิด ไม่ถูกล้างเมื่อมีคนอื่นบันทึก (มีแจ้งเตือนแทน) */}

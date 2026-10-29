@@ -30,12 +30,13 @@ const CATEGORIES: (IssueCategory | undefined)[] = [undefined, "issue", "safety",
 
 export default function IssuesPage() {
   const { can } = useAuth();
+  const projectId = useSearchParams().get("project");
   return (
     <>
       <PageHeader
         title="ปัญหา / ความปลอดภัย / RFI"
         subtitle="ติดตามทุกเรื่องจนปิดงาน พร้อมผู้รับผิดชอบและกำหนดเสร็จ · อัปเดตอัตโนมัติ"
-        actions={can("issue.create") && <Link href="/issues/new" className="btn btn-primary">+ แจ้งเรื่องใหม่</Link>}
+        actions={can("issue.create") && <Link href={`/issues/new${projectId ? `?project=${projectId}` : ""}`} className="btn btn-primary">+ แจ้งเรื่องใหม่</Link>}
       />
       <Guard permission="issue.view">
         <Board />
@@ -78,7 +79,8 @@ function Board() {
             </Link>
           ))}
         </nav>
-        <ProjectFilter projects={projects.map((p) => ({ id: p.id, name: p.name }))} basePath="/issues" />
+        {/* ใน workspace ของโครงการสลับโครงการได้จากแถบบนแล้ว */}
+        {!projectId && <ProjectFilter projects={projects.map((p) => ({ id: p.id, name: p.name }))} basePath="/issues" />}
       </div>
 
       {issues.length === 0 ? (
@@ -94,7 +96,7 @@ function Board() {
                 </h3>
                 <div className="space-y-2.5">
                   {items.map((issue) => (
-                    <IssueCard key={`${issue.project_id}/${issue.id}`} issue={issue} today={today} />
+                    <IssueCard key={`${issue.project_id}/${issue.id}`} issue={issue} today={today} showProject={!projectId} />
                   ))}
                   {items.length === 0 && <p className="py-4 text-center text-xs text-muted">ไม่มีรายการ</p>}
                 </div>
@@ -107,7 +109,7 @@ function Board() {
   );
 }
 
-function IssueCard({ issue, today }: { issue: Issue; today: string }) {
+function IssueCard({ issue, today, showProject }: { issue: Issue; today: string; showProject: boolean }) {
   const overdue = isOverdue(issue, today);
   const priority = issuePriority[issue.priority];
   return (
@@ -120,7 +122,8 @@ function IssueCard({ issue, today }: { issue: Issue; today: string }) {
         <Pill tone={priority.tone}>{priority.label}</Pill>
       </div>
       <div className="mt-1 text-xs text-muted">
-        {issue.code} · {issue.project_name}
+        {issue.code}
+        {showProject && ` · ${issue.project_name}`}
       </div>
       <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-muted">
         {issue.assignee && <span>👤 {issue.assignee}</span>}

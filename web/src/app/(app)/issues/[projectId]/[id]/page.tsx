@@ -50,7 +50,7 @@ function Detail() {
             {issue.project_name}
           </Link>
         }
-        actions={<Link href="/issues" className="btn">กลับไปบอร์ด</Link>}
+        actions={<Link href={`/issues?project=${projectId}`} className="btn">กลับไปบอร์ด</Link>}
       />
 
       <div className="grid gap-4 xl:grid-cols-[2fr_1fr]">

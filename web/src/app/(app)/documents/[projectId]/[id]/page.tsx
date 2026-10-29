@@ -44,7 +44,7 @@ function Detail() {
         }
         actions={
           <>
-            <Link href="/documents" className="btn">กลับ</Link>
+            <Link href={`/documents?project=${projectId}`} className="btn">กลับ</Link>
             {current && (
               <a href={current.url} target="_blank" rel="noopener" className="btn btn-primary">
                 เปิดไฟล์ Rev. {current.rev}

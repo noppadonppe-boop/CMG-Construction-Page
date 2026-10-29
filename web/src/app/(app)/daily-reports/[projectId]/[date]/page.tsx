@@ -91,7 +91,7 @@ function DcrView() {
       {/* แถบคำสั่ง (ไม่ถูกพิมพ์) */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2 print:hidden">
         <div className="flex items-center gap-2">
-          <Link href="/daily-reports" className="btn">← รายงานทั้งหมด</Link>
+          <Link href={`/daily-reports?project=${projectId}`} className="btn">← รายงานทั้งหมด</Link>
           <Pill tone={r.status === "draft" ? "warn" : r.status === "submitted" ? "info" : "ok"}>{DCR_STATUS_LABEL[r.status]}</Pill>
           {r.legacy && <Pill tone="info">รูปแบบเดิม</Pill>}
           {r.form_standard && <Pill tone="info">มาตรฐาน {r.form_standard.code || r.form_standard.name}</Pill>}

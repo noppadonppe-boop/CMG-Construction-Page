@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth/context";
 import { useDailyReports } from "@/lib/db/daily";
 import { DCR_STATUS_LABEL } from "@/lib/dcr";
@@ -12,22 +13,29 @@ import { PhotoGallery } from "@/components/photo-gallery";
 
 export default function DailyReportsPage() {
   const { can } = useAuth();
+  const projectId = useSearchParams().get("project");
   return (
     <>
       <PageHeader
         title="รายงานประจำวัน (Site Diary)"
-        subtitle="บันทึกงานหน้างานรายวันของโครงการที่คุณได้รับมอบหมาย · อัปเดตอัตโนมัติ"
-        actions={can("daily.create") && <Link href="/daily-reports/new" className="btn btn-primary">+ เขียนรายงาน</Link>}
+        subtitle={`บันทึกงานหน้างานรายวัน${projectId ? "ของโครงการนี้" : "ของโครงการที่คุณได้รับมอบหมาย"} · อัปเดตอัตโนมัติ`}
+        actions={
+          can("daily.create") && (
+            <Link href={`/daily-reports/new${projectId ? `?project=${projectId}` : ""}`} className="btn btn-primary">+ เขียนรายงาน</Link>
+          )
+        }
       />
       <Guard permission="daily.view">
-        <ReportList />
+        <ReportList projectId={projectId} />
       </Guard>
     </>
   );
 }
 
-function ReportList() {
-  const { projects, loading: loadingProjects } = useProjects();
+/** projectId = อยู่ใน workspace ของโครงการ → ฟังเฉพาะรายงานของโครงการนั้น */
+function ReportList({ projectId }: { projectId: string | null }) {
+  const { projects: all, loading: loadingProjects } = useProjects();
+  const projects = projectId ? all.filter((p) => p.id === projectId) : all;
   const { reports, loading } = useDailyReports(projects);
   if (loadingProjects || loading) return <Skeleton />;
   if (projects.length === 0) return <NoProjects />;
@@ -45,10 +53,14 @@ function ReportList() {
                     {formatDate(r.report_date)}
                     {r.code && <span className="ml-2 text-sm font-normal text-muted">{r.code}</span>}
                   </Link>
-                  <span className="text-muted"> · </span>
-                  <Link href={`/projects/${r.project_id}`} className="text-muted hover:text-primary">
-                    {r.project_name}
-                  </Link>
+                  {!projectId && (
+                    <>
+                      <span className="text-muted"> · </span>
+                      <Link href={`/projects/${r.project_id}`} className="text-muted hover:text-primary">
+                        {r.project_name}
+                      </Link>
+                    </>
+                  )}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {r.status && <Pill tone={r.status === "draft" ? "warn" : r.status === "submitted" ? "info" : "ok"}>{DCR_STATUS_LABEL[r.status]}</Pill>}

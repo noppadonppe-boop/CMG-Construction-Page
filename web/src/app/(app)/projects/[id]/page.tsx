@@ -8,7 +8,6 @@ import { useProjects } from "@/lib/db/projects";
 import { formatDate, formatMillions, formatPct, scheduleStatus, weatherLabel } from "@/lib/format";
 import { EmptyState, KpiCard, PageHeader, Pill, Skeleton } from "@/components/ui";
 import { SCurve } from "@/components/s-curve";
-import { DeleteProjectButton } from "../delete-project-button";
 import { PhotoGallery } from "@/components/photo-gallery";
 import { ProjectForms } from "./project-forms";
 
@@ -42,24 +41,16 @@ export default function ProjectPage() {
 
   return (
     <>
+      {/* ความคืบหน้า/ตั้งค่า/แก้ไข/ลบ อยู่ในเมนูของโครงการ — หัวหน้านี้เหลือเฉพาะงานที่ทำทุกวัน */}
       <PageHeader
-        eyebrow={`โครงการ / ${project.code}`}
         title={project.name}
         subtitle={`ผู้จัดการ: ${project.manager_name ?? "-"} · สัญญา ${formatDate(project.start_date)} – ${formatDate(project.end_date)} · มูลค่า ${formatMillions(project.contract_value)}`}
         actions={
-          <div className="flex flex-wrap gap-2">
-            {can("project.edit") && <Link href={`/projects/${project.id}/edit`} className="btn">แก้ไขข้อมูล</Link>}
-            {can("progress.edit") && <Link href={`/projects/${project.id}/progress`} className="btn">อัปเดตความคืบหน้า</Link>}
-            {can("project.edit") && <Link href={`/projects/${project.id}/report-settings`} className="btn">ตั้งค่ารายงาน/โลโก้</Link>}
-            {can("project.delete") && (
-              <DeleteProjectButton project={{ id: project.id, code: project.code, name: project.name }} redirectTo="/projects" />
-            )}
-            {can("daily.create") && (
-              <Link href={`/daily-reports/new?project=${project.id}`} className="btn btn-primary">
-                + รายงานประจำวัน
-              </Link>
-            )}
-          </div>
+          can("daily.create") && (
+            <Link href={`/daily-reports/new?project=${project.id}`} className="btn btn-primary">
+              + รายงานประจำวัน
+            </Link>
+          )
         }
       />
 

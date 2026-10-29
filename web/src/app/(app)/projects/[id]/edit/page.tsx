@@ -15,7 +15,7 @@ export default function EditProjectPage() {
   if (!project) return <EmptyState>ไม่พบโครงการ หรือคุณไม่ได้รับมอบหมายโครงการนี้</EmptyState>;
   return (
     <>
-      <PageHeader eyebrow={`โครงการ / ${project.code}`} title="แก้ไขข้อมูลโครงการ" subtitle={project.name} />
+      <PageHeader title="แก้ไขข้อมูลโครงการ" subtitle={project.name} />
       <Guard permission="project.edit">
         {/* key = id เท่านั้น: ข้อมูลเปลี่ยนแบบ realtime แล้วฟอร์มไม่ล้างสิ่งที่กำลังพิมพ์ */}
         <ProjectForm key={project.id} project={project} />

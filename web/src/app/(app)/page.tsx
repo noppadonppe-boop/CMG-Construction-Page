@@ -1,126 +1,176 @@
 "use client";
 
 import Link from "next/link";
-import { useAuth } from "@/lib/auth/context";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { displayName, useAuth } from "@/lib/auth/context";
+import { useDailyReports } from "@/lib/db/daily";
 import { useIssues } from "@/lib/db/issues";
-import { useProjects } from "@/lib/db/projects";
-import {
-  formatDate,
-  formatMillions,
-  isOverdue,
-  issueCategoryIcon,
-  issuePriority,
-  scheduleStatus,
-  todayInBangkok,
-} from "@/lib/format";
-import type { IssuePriority } from "@/lib/types";
-import { KpiCard, PageHeader, Pill, Skeleton } from "@/components/ui";
-import { ProjectTable } from "./projects/project-table";
-
+import { useProjects, type ProjectRecord } from "@/lib/db/projects";
+import { formatMillions, scheduleStatus, statusLabel, todayInBangkok } from "@/lib/format";
+import { readLastProject } from "@/lib/project-context";
+import type { ProjectStatus } from "@/lib/types";
+import { Pill, ProgressBar, Skeleton } from "@/components/ui";
 import { NoProjects } from "@/components/guard";
 
-export default function DashboardPage() {
-  const { can } = useAuth();
+const STATUSES: ProjectStatus[] = ["active", "planning", "completed"];
+const noSubscribe = () => () => {};
+
+// ชื่อไทยเขียนติด "คุณ" ได้ ชื่ออังกฤษเว้นวรรค
+const greetingName = (name: string) => (/^[A-Za-z]/.test(name) ? `คุณ ${name}` : `คุณ${name}`);
+
+// ก่อนเวลานี้ยังไม่ถือว่า "ขาด" รายงานวันนี้ — เตือนแบบเบา ๆ ก่อน
+const REPORT_DUE_HOUR = 17;
+const bangkokHour = () => Number(new Date().toLocaleString("en-US", { timeZone: "Asia/Bangkok", hour: "numeric", hourCycle: "h23" }));
+
+/** หน้าแรก — เลือกโครงการเพื่อเข้าไปทำงาน */
+export default function ProjectPickerPage() {
+  const { userProfile, can } = useAuth();
+  const { projects, loading } = useProjects();
   return (
     <>
-      <PageHeader
-        title="ภาพรวมโครงการทั้งหมด"
-        subtitle="ข้อมูลล่าสุดจากทุกไซต์งาน · อัปเดตอัตโนมัติ"
-        actions={can("daily.create") && <Link href="/daily-reports/new" className="btn btn-primary">+ รายงานประจำวัน</Link>}
-      />
-      <Dashboard />
+      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-[22px] font-bold">สวัสดี{userProfile && ` ${greetingName(displayName(userProfile))}`}</h1>
+          <p className="text-muted">
+            เลือกโครงการเพื่อเริ่มทำงาน
+            {!loading && ` · ${can("project.viewAll") ? "ทั้งหมดในระบบ" : "คุณได้รับมอบหมาย"} ${projects.length} โครงการ`}
+          </p>
+        </div>
+        {can("project.create") && <Link href="/projects/new" className="btn btn-primary">+ สร้างโครงการ</Link>}
+      </div>
+      {loading ? <Skeleton /> : projects.length === 0 ? <NoProjects /> : <Picker projects={projects} />}
     </>
   );
 }
 
-function Dashboard() {
-  const { projects, loading } = useProjects();
+function Picker({ projects }: { projects: ProjectRecord[] }) {
+  const router = useRouter();
+  const params = useSearchParams();
   const { can } = useAuth();
-  // ผู้ที่ไม่มีสิทธิ์ดูเรื่องปัญหา จะไม่เปิด listener ของหมวดนี้เลย
-  const { issues } = useIssues(can("issue.view") ? projects : []);
-  const today = todayInBangkok();
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState<ProjectStatus | null>(null);
+  const lastId = useSyncExternalStore(noSubscribe, readLastProject, () => null);
 
-  if (loading) return <Skeleton />;
-  if (projects.length === 0) return <NoProjects />;
+  // มีโครงการเดียว → พาเข้าโครงการเลย (?all = ผู้ใช้กดกลับมาหน้ารวมเอง)
+  const only = projects.length === 1 ? projects[0].id : null;
+  const showAll = params.has("all");
+  useEffect(() => {
+    if (only && !showAll) router.replace(`/projects/${only}`);
+  }, [only, showAll, router]);
 
   const active = projects.filter((p) => p.status === "active");
-  const totalValue = projects.reduce((sum, p) => sum + p.contract_value, 0);
-  const delayed = active.filter((p) => scheduleStatus(p.actual_pct, p.planned_pct).tone === "bad");
-  const avgProgress = active.length ? active.reduce((s, p) => s + p.actual_pct, 0) / active.length : 0;
+  const { issues } = useIssues(can("issue.view") ? projects : []);
+  const { reports } = useDailyReports(can("daily.view") ? active : []);
+  const today = todayInBangkok();
+  const reportOverdue = bangkokHour() >= REPORT_DUE_HOUR;
+  const openIssues = new Map<string, number>();
+  for (const i of issues) if (i.status !== "closed") openIssues.set(i.project_id, (openIssues.get(i.project_id) ?? 0) + 1);
+  const reportedToday = new Set(reports.filter((r) => r.report_date === today).map((r) => r.project_id));
 
-  // เรื่องที่ต้องดำเนินการ: เกินกำหนดก่อน แล้วเรียงตามความเร่งด่วน และวันกำหนดเสร็จ
-  const urgency: Record<IssuePriority, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
-  const pending = issues.filter((i) => i.status !== "closed");
-  const overdueCount = pending.filter((i) => isOverdue(i, today)).length;
-  const todo = pending
+  const q = search.trim().toLowerCase();
+  const shown = projects
+    .filter((p) => (!status || p.status === status) && (!q || `${p.code} ${p.name} ${p.manager_name ?? ""}`.toLowerCase().includes(q)))
     .toSorted(
       (a, b) =>
-        Number(isOverdue(b, today)) - Number(isOverdue(a, today)) ||
-        urgency[a.priority] - urgency[b.priority] ||
-        (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999"),
-    )
-    .slice(0, 6);
+        Number(b.id === lastId) - Number(a.id === lastId) ||
+        STATUSES.indexOf(a.status) - STATUSES.indexOf(b.status) ||
+        a.code.localeCompare(b.code),
+    );
+
+  if (only && !showAll) return <Skeleton />;
 
   return (
     <>
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <KpiCard label="โครงการที่ดำเนินการ" value={active.length} note={`ทั้งหมด ${projects.length} โครงการ`} />
-        <KpiCard label="มูลค่างานรวม" value={formatMillions(totalValue)} />
-        <KpiCard
-          label="โครงการล่าช้ากว่าแผน"
-          value={delayed.length}
-          tone={delayed.length ? "bad" : "ok"}
-          note={delayed.length ? delayed.map((p) => p.code).join(", ") : "ทุกโครงการอยู่ในเกณฑ์"}
-        />
-        <KpiCard
-          label="เรื่องค้าง (ปัญหา / ความปลอดภัย / RFI)"
-          value={pending.length}
-          tone={overdueCount ? "bad" : undefined}
-          note={overdueCount ? `เกินกำหนด ${overdueCount} เรื่อง` : `ความคืบหน้าเฉลี่ย ${avgProgress.toFixed(1)}%`}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <nav className="flex gap-1 overflow-x-auto rounded-lg border border-border bg-surface p-1" aria-label="กรองตามสถานะ">
+          {[null, ...STATUSES].map((s) => {
+            const count = s ? projects.filter((p) => p.status === s).length : projects.length;
+            return (
+              <button
+                key={s ?? "all"}
+                type="button"
+                onClick={() => setStatus(s)}
+                className={`rounded-md px-3 py-1.5 whitespace-nowrap ${s === status ? "bg-primary-soft font-semibold text-primary" : "text-muted hover:text-text"}`}
+              >
+                {s ? statusLabel[s] : "ทั้งหมด"} {count}
+              </button>
+            );
+          })}
+        </nav>
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="ค้นหาชื่อ / รหัส / ผู้จัดการ"
+          aria-label="ค้นหาโครงการ"
+          className="input ml-auto w-full sm:w-64"
         />
       </div>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-[2fr_1fr]">
-        <div className="card">
-          <h3 className="mb-3 font-semibold">สถานะโครงการ</h3>
-          <ProjectTable projects={projects} />
+      {shown.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-border p-8 text-center text-muted">ไม่พบโครงการที่ตรงกับการค้นหา</p>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {shown.map((p) => (
+            <ProjectCard
+              key={p.id}
+              project={p}
+              recent={p.id === lastId}
+              openIssues={openIssues.get(p.id) ?? 0}
+              missingToday={can("daily.view") && p.status === "active" && !reportedToday.has(p.id)}
+              reportOverdue={reportOverdue}
+            />
+          ))}
         </div>
-        <div className="card">
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="font-semibold">ต้องดำเนินการ</h3>
-            <Link href="/issues" className="text-xs text-primary">ดูทั้งหมด →</Link>
-          </div>
-          {todo.length === 0 ? (
-            <p className="text-muted">ไม่มีเรื่องค้าง 🎉</p>
-          ) : (
-            <ul className="divide-y divide-border">
-              {todo.map((i) => {
-                const overdue = isOverdue(i, today);
-                return (
-                  <li key={i.id} className="py-2.5">
-                    <div className="flex items-start justify-between gap-2">
-                      <Link href={`/issues/${i.project_id}/${i.id}`} className="hover:text-primary">
-                        {issueCategoryIcon[i.category]} {i.title}
-                      </Link>
-                      <Pill tone={issuePriority[i.priority].tone}>{issuePriority[i.priority].label}</Pill>
-                    </div>
-                    <div className="text-xs text-muted">
-                      {i.code} · {i.project_name}
-                      {i.due_date && (
-                        <span className={overdue ? "font-semibold text-bad" : ""}>
-                          {" · "}
-                          {overdue ? "เกินกำหนด " : "ครบ "}
-                          {formatDate(i.due_date, "short")}
-                        </span>
-                      )}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
-      </div>
+      )}
     </>
+  );
+}
+
+function ProjectCard({
+  project: p,
+  recent,
+  openIssues,
+  missingToday,
+  reportOverdue,
+}: {
+  project: ProjectRecord;
+  recent: boolean;
+  openIssues: number;
+  missingToday: boolean;
+  reportOverdue: boolean;
+}) {
+  const schedule = scheduleStatus(p.actual_pct, p.planned_pct);
+  return (
+    <Link
+      href={`/projects/${p.id}`}
+      className={`card flex flex-col gap-1 transition hover:border-primary hover:shadow-md ${recent ? "border-primary ring-2 ring-primary-soft" : ""}`}
+    >
+      <div className="flex items-center justify-between gap-2 text-xs text-muted">
+        <span>
+          {p.code}
+          {recent && <span className="ml-2 font-semibold text-primary">เปิดล่าสุด</span>}
+        </span>
+        {/* สถานะเทียบแผนมีความหมายเฉพาะโครงการที่กำลังก่อสร้าง */}
+        {p.status === "active" ? <Pill tone={schedule.tone}>{schedule.label}</Pill> : <Pill tone="info">{statusLabel[p.status]}</Pill>}
+      </div>
+      <div className="text-base font-semibold">{p.name}</div>
+      <div className="text-xs text-muted">
+        PM: {p.manager_name ?? "-"} · {formatMillions(p.contract_value)}
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        <ProgressBar actual={p.actual_pct} planned={p.planned_pct} />
+        <span className="text-xs whitespace-nowrap text-muted tabular-nums">
+          จริง {Math.round(p.actual_pct)}% / แผน {Math.round(p.planned_pct)}%
+        </span>
+      </div>
+      {(openIssues > 0 || missingToday) && (
+        <div className="mt-1 flex flex-wrap gap-x-3 text-xs">
+          {openIssues > 0 && <span className="text-warn">⚠ เรื่องค้าง {openIssues}</span>}
+          {missingToday && <span className={reportOverdue ? "text-bad" : "text-muted"}>ยังไม่มีรายงานวันนี้</span>}
+        </div>
+      )}
+    </Link>
   );
 }

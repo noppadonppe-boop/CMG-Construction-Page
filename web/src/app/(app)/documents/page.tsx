@@ -15,12 +15,13 @@ const CATEGORIES = Object.keys(documentCategory) as DocumentCategory[];
 
 export default function DocumentsPage() {
   const { can } = useAuth();
+  const projectId = useSearchParams().get("project");
   return (
     <>
       <PageHeader
         title="ศูนย์เอกสาร"
         subtitle="แหล่งเดียวสำหรับแบบ สัญญา และเอกสารทุกฉบับ — เก็บทุก revision · อัปเดตอัตโนมัติ"
-        actions={can("document.upload") && <Link href="/documents/new" className="btn btn-primary">+ อัปโหลด</Link>}
+        actions={can("document.upload") && <Link href={`/documents/new${projectId ? `?project=${projectId}` : ""}`} className="btn btn-primary">+ อัปโหลด</Link>}
       />
       <Guard permission="document.view">
         <Library />
@@ -51,9 +52,12 @@ function Library() {
 
   return (
     <>
-      <div className="mb-4 flex justify-end">
-        <ProjectFilter projects={projects.map((p) => ({ id: p.id, name: p.name }))} basePath="/documents" />
-      </div>
+      {/* ใน workspace ของโครงการสลับโครงการได้จากแถบบนแล้ว */}
+      {!projectId && (
+        <div className="mb-4 flex justify-end">
+          <ProjectFilter projects={projects.map((p) => ({ id: p.id, name: p.name }))} basePath="/documents" />
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
         {CATEGORIES.map((c) => {
@@ -91,7 +95,7 @@ function Library() {
               <thead>
                 <tr className="text-left text-xs text-muted">
                   <th className="px-2.5 py-2 font-medium">เอกสาร</th>
-                  <th className="hidden px-2.5 py-2 font-medium md:table-cell">โครงการ</th>
+                  {!projectId && <th className="hidden px-2.5 py-2 font-medium md:table-cell">โครงการ</th>}
                   <th className="px-2.5 py-2 font-medium">Rev.</th>
                   <th className="px-2.5 py-2 font-medium">สถานะ</th>
                   <th className="hidden px-2.5 py-2 font-medium sm:table-cell">อัปเดต</th>
@@ -111,7 +115,7 @@ function Library() {
                           {documentCategory[d.category].label} · {current?.file_name}
                         </div>
                       </td>
-                      <td className="hidden px-2.5 py-3 md:table-cell">{d.project_name}</td>
+                      {!projectId && <td className="hidden px-2.5 py-3 md:table-cell">{d.project_name}</td>}
                       <td className="px-2.5 py-3 font-semibold">{current?.rev ?? "-"}</td>
                       <td className="px-2.5 py-3">
                         <Pill tone={documentStatus[d.status].tone}>{documentStatus[d.status].label}</Pill>
