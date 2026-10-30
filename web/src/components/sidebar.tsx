@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Suspense, useEffect, useRef, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useState, type ReactNode } from "react";
 import { displayName, useAuth } from "@/lib/auth/context";
 import { ROLE_LABEL, type Permission } from "@/lib/auth/roles";
 import { usePendingUserCount } from "@/lib/db/users";
@@ -10,7 +10,7 @@ import { useMenus } from "@/lib/db/menus";
 import { useProjects } from "@/lib/db/projects";
 import { rememberLastProject, switchProjectHref, useCurrentProjectId } from "@/lib/project-context";
 import { Avatar } from "./avatar";
-import { MenuDialog } from "./menu-dialog";
+import { MenuIcon } from "./icon-pickers";
 import { ProfileMenu } from "./profile-menu";
 
 const icons = {
@@ -107,8 +107,6 @@ function Nav({ pathname, projectId, onNavigate }: { pathname: string | null; pro
   const { menus } = useMenus();
   const { byId } = useProjects();
   const allHref = useAllProjectsHref();
-  const router = useRouter();
-  const addMenuRef = useRef<HTMLDialogElement>(null);
   const project = projectId ? byId.get(projectId) : undefined;
   const sections = project ? projectSections(project.id) : globalSections;
   // pathname = null คือ fallback ระหว่างรออ่าน URL — ไม่ไฮไลต์อะไร
@@ -149,9 +147,13 @@ function Nav({ pathname, projectId, onNavigate }: { pathname: string | null; pro
             <div className="px-2.5 pt-3.5 pb-1 text-[11px] tracking-wider uppercase opacity-55">เมนูเพิ่มเติม</div>
             {menus.map((m) => (
               <Link key={m.id} href={`/m/${m.id}`} onClick={onNavigate} className={navClass(isActive({ href: `/m/${m.id}` }))}>
-                <span className="grid size-[18px] flex-none place-items-center text-[15px] leading-none">
-                  {m.emoji || <i className="size-2.5 rounded-full" style={{ background: m.color }} />}
-                </span>
+                {m.icon ? (
+                  <MenuIcon emoji="" icon={m.icon} color={m.color} name={m.name} size={18} />
+                ) : (
+                  <span className="grid size-[18px] flex-none place-items-center text-[15px] leading-none">
+                    {m.emoji || <i className="size-2.5 rounded-full" style={{ background: m.color }} />}
+                  </span>
+                )}
                 <span className="truncate">{m.name}</span>
               </Link>
             ))}
@@ -159,24 +161,14 @@ function Nav({ pathname, projectId, onNavigate }: { pathname: string | null; pro
         )}
       </div>
 
-      {/* มุมซ้ายล่าง: เพิ่มเมนู + จัดการผู้ใช้ — เห็นเฉพาะผู้มีสิทธิ์ */}
+      {/* มุมซ้ายล่าง: หน้าจัดการเมนู + จัดการผู้ใช้ — เห็นเฉพาะผู้มีสิทธิ์ */}
       {(can("menu.manage") || can("user.manage")) && (
         <div className="mt-auto flex flex-col gap-1 border-t border-white/10 pt-3">
           {can("menu.manage") && (
-            <>
-              <button type="button" onClick={() => addMenuRef.current?.showModal()} className={`${navClass(false)} text-left`}>
-                <Icon d={icons.plus} />
-                เพิ่มเมนู
-              </button>
-              <MenuDialog
-                dialogRef={addMenuRef}
-                nextOrder={(menus.at(-1)?.order ?? -1) + 1}
-                onSaved={(id) => {
-                  onNavigate();
-                  router.push(`/m/${id}`);
-                }}
-              />
-            </>
+            <Link href="/menus" onClick={onNavigate} className={navClass(isActive({ href: "/menus" }))}>
+              <Icon d={icons.plus} />
+              เพิ่ม / จัดการเมนู
+            </Link>
           )}
           {can("user.manage") && (
             <Link href="/admin" onClick={onNavigate} className={navClass(isActive({ href: "/admin" }))}>
