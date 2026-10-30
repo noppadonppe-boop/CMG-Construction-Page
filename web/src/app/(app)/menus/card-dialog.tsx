@@ -2,32 +2,40 @@
 
 import { useState } from "react";
 import { useAuth } from "@/lib/auth/context";
-import { addCard, CARD_COLORS, GRID_COLS, MAX_ROWS, safeUrl, updateCard, type CardInput, type MenuCard } from "@/lib/db/menus";
+import { addCard, CARD_COLORS, GRID_COLS, MAX_ROWS, safeUrl, updateCard, type CardInput, type CustomMenu, type MenuCard } from "@/lib/db/menus";
+import { useProjects } from "@/lib/db/projects";
 import { EditorDialog } from "@/components/editor-dialog";
 import { ColorPicker, IconPicker, MenuIcon } from "@/components/icon-pickers";
+import { ProjectScopePicker, scopeError, scopeLabel } from "@/components/project-scope-picker";
 import { ActiveSwitch } from "./active-switch";
 
 const SIZE_PRESETS: [number, number][] = [[1, 5], [2, 5], [3, 5], [2, 7], [4, 6], [6, 6], [12, 4]];
 const DESCRIPTION_MAX = 80;
 
 /** เพิ่ม Card ใหม่ (ไม่ส่ง card) หรือแก้ Card เดิม */
-export function CardDialog({ menuId, menuName, card, onClose }: { menuId: string; menuName: string; card?: MenuCard; onClose: () => void }) {
+export function CardDialog({ menu, card, onClose }: { menu: CustomMenu; card?: MenuCard; onClose: () => void }) {
   const { userProfile } = useAuth();
+  const { projects, byId } = useProjects();
   const [v, setV] = useState<CardInput>(
-    card ?? { name: "", url: "", description: "", emoji: "", glyph: "globe", icon: null, color: CARD_COLORS[0], active: false, w: 2, h: 5 },
+    card ?? { name: "", url: "", description: "", emoji: "", glyph: "globe", icon: null, color: CARD_COLORS[0], active: false, w: 2, h: 5, project_ids: [] },
   );
+  const [limited, setLimited] = useState(v.project_ids.length > 0);
+  // Card เลือกได้เฉพาะโครงการที่เมนูแสดง (เมนูทุกโครงการ = เลือกได้ทุกโครงการ)
+  const choices = menu.project_ids.length ? projects.filter((p) => menu.project_ids.includes(p.id)) : projects;
+  const menuId = menu.id;
   const set = (patch: Partial<CardInput>) => setV((prev) => ({ ...prev, ...patch }));
   const input = { ...v, name: v.name.trim(), url: v.url.trim(), description: v.description.trim() };
 
   return (
     <EditorDialog
       title={card ? "แก้ไข Card" : "เพิ่ม Card ใหม่"}
-      subtitle={`หมวด: ${menuName}`}
+      subtitle={`หมวด: ${menu.name}`}
       isNew={!card}
       submitLabel={card ? "บันทึก" : "เพิ่ม Card"}
       validate={() => {
         if (!input.name) return "กรุณาใส่ชื่อ Card";
         if (input.url !== "#" && !safeUrl(input.url)) return "URL ต้องขึ้นต้นด้วย http:// หรือ https:// (ใส่ # ถ้ายังไม่มี URL)";
+        return scopeError(limited, input.project_ids);
       }}
       save={() => (card ? updateCard(menuId, card, input, userProfile!.email) : addCard(menuId, input, userProfile!.email))}
       onClose={onClose}
@@ -80,6 +88,23 @@ export function CardDialog({ menuId, menuName, card, onClose }: { menuId: string
       </div>
 
       <SizePicker w={v.w} h={v.h} onChange={(w, h) => set({ w, h })} />
+
+      <div>
+        <div className="label">แสดงในโครงการ</div>
+        <ProjectScopePicker
+          ids={v.project_ids}
+          limited={limited}
+          onChange={(on, project_ids) => {
+            setLimited(on);
+            set({ project_ids });
+          }}
+          projects={choices}
+          allLabel="ตามเมนู"
+          allHint={menu.project_ids.length ? scopeLabel(menu.project_ids, byId) : "ทุกโครงการ"}
+          limitLabel="เฉพาะบางโครงการ"
+          limitHint="เลือกจากโครงการของเมนูนี้"
+        />
+      </div>
 
       <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-border bg-surface-2 p-3">
         <div className="flex-1">

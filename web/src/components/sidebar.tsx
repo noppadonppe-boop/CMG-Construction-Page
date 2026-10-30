@@ -7,7 +7,7 @@ import { Suspense, useEffect, useState, type ReactNode } from "react";
 import { displayName, useAuth } from "@/lib/auth/context";
 import { ROLE_LABEL, type Permission } from "@/lib/auth/roles";
 import { usePendingUserCount } from "@/lib/db/users";
-import { useMenus } from "@/lib/db/menus";
+import { menuVisibleIn, useMenus } from "@/lib/db/menus";
 import { useProjects } from "@/lib/db/projects";
 import { rememberLastProject, switchProjectHref, useCurrentProjectId } from "@/lib/project-context";
 import { Avatar } from "./avatar";
@@ -110,6 +110,9 @@ function Nav({ pathname, projectId, onNavigate }: { pathname: string | null; pro
   const allHref = useAllProjectsHref();
   const project = projectId ? byId.get(projectId) : undefined;
   const sections = project ? projectSections(project.id) : globalSections;
+  // เมนูเพิ่มเติม: นอกโครงการเห็นเฉพาะเมนูทุกโครงการ ในโครงการเห็นเมนูของโครงการนั้นด้วย (ลิงก์พา ?project= ไปต่อ)
+  const sideMenus = menus.filter((m) => menuVisibleIn(m, project?.id ?? null));
+  const menuQuery = project ? `?project=${project.id}` : "";
   // pathname = null คือ fallback ระหว่างรออ่าน URL — ไม่ไฮไลต์อะไร
   const isActive = (item: Pick<NavItem, "href" | "match">) => pathname !== null && (item.match ?? under(item.href))(pathname);
   return (
@@ -143,11 +146,11 @@ function Nav({ pathname, projectId, onNavigate }: { pathname: string | null; pro
           );
         })}
         {/* เมนูที่ผู้ดูแลสร้างเอง — ภายในเป็น Card ลิงก์ */}
-        {menus.length > 0 && (
+        {sideMenus.length > 0 && (
           <div className="flex flex-col gap-1">
             <div className="px-2.5 pt-3.5 pb-1 text-[11px] tracking-wider uppercase opacity-55">เมนูเพิ่มเติม</div>
-            {menus.map((m) => (
-              <Link key={m.id} href={`/m/${m.id}`} onClick={onNavigate} className={navClass(isActive({ href: `/m/${m.id}` }))}>
+            {sideMenus.map((m) => (
+              <Link key={m.id} href={`/m/${m.id}${menuQuery}`} onClick={onNavigate} className={navClass(isActive({ href: `/m/${m.id}` }))}>
                 <SideMenuIcon menu={m} />
                 <span className="truncate">{m.name}</span>
               </Link>

@@ -2,8 +2,8 @@ rules_version = '2';
 
 // แอปอ่าน/เขียน Firestore จากเบราว์เซอร์โดยตรงในชื่อผู้ใช้ที่ล็อกอิน (ข้อมูลทั้งหมดอยู่ใต้ Cmg-Cons-Page-Claude/root)
 // - ทุกคอลเลกชัน: ผู้ใช้ที่ล็อกอินแล้วอ่าน/เขียนได้ (เหมือนเดิม — แอปตรวจสิทธิ์ตาม Role ฝั่งหน้าเว็บ)
-// - menus (เมนูเพิ่มเติมใน sidebar) และ formStandards (คลังมาตรฐานแบบฟอร์มกลาง):
-//   ผู้ใช้ที่ล็อกอินอ่านได้ แต่สร้าง/แก้/ลบได้เฉพาะ MasterAdmin หรือ Admin ที่อนุมัติแล้ว
+// - menus (เมนูเพิ่มเติมใน sidebar): ผู้ใช้ที่ล็อกอินอ่านได้ แต่สร้าง/แก้/ลบได้เฉพาะ MasterAdmin ที่อนุมัติแล้ว
+// - formStandards (คลังมาตรฐานแบบฟอร์มกลาง): ผู้ใช้ที่ล็อกอินอ่านได้ แต่สร้าง/แก้/ลบได้เฉพาะ MasterAdmin หรือ Admin ที่อนุมัติแล้ว
 //   (การเลือกแบบฟอร์มให้โครงการ เขียนที่เอกสารโครงการ projects/{id}.form_standards จึงไม่ติด rule นี้)
 //
 // หมายเหตุ: rule ใน Firestore เป็นแบบ OR — ถ้ามี match ใดอนุญาต ก็ผ่าน จึงต้องตัดคอลเลกชันเหล่านี้ออกจาก match กว้างด้วย
@@ -17,11 +17,19 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/Cmg-Cons-Page-Claude/root/users/$(request.auth.token.email.lower())).data;
     }
 
-    function isApprovedAdmin() {
+    function hasApprovedRole(roles) {
       return signedIn()
         && request.auth.token.email != null
         && me().status == 'approved'
-        && me().role.hasAny(['MasterAdmin', 'Admin']);
+        && me().role.hasAny(roles);
+    }
+
+    function isApprovedAdmin() {
+      return hasApprovedRole(['MasterAdmin', 'Admin']);
+    }
+
+    function isApprovedMasterAdmin() {
+      return hasApprovedRole(['MasterAdmin']);
     }
 
     match /Cmg-Cons-Page-Claude/root {
@@ -33,7 +41,7 @@ service cloud.firestore {
       }
 
       match /menus/{menuId} {
-        allow write: if isApprovedAdmin();
+        allow write: if isApprovedMasterAdmin();
       }
 
       match /formStandards/{formId} {

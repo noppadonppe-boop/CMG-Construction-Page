@@ -8,6 +8,8 @@ import { menuIconPath, menuRef, menusCol } from "./paths";
 
 // เมนูเพิ่มเติมใน sidebar: menus/{id} — Card ทั้งหมดของเมนูเก็บเป็น array ในเอกสารเดียว (ลำดับใน array = ลำดับบนหน้า)
 // Card 1 ใบ = ลิงก์ 1 รายการ · ไอคอนรูปภาพเก็บใน Storage แยก ในเอกสารเก็บแค่ path + url
+// project_ids = โครงการที่เมนู/Card แสดง: เมนู [] = ทุกโครงการ, Card [] = ตามเมนู (Card เลือกได้เฉพาะโครงการของเมนู)
+// การซ่อนตามโครงการทำที่หน้าเว็บ — ผู้ใช้ที่ล็อกอินยังอ่านเอกสารเมนูได้ทั้งหมด
 
 /** ขนาดของ Card บนตาราง 12 คอลัมน์: w = กว้างกี่คอลัมน์, h = สูงกี่แถว (แถวละ 24px) */
 export const GRID_COLS = 12;
@@ -39,6 +41,8 @@ export interface MenuCard extends IconFields {
   active: boolean;
   w: number;
   h: number;
+  /** [] = ตามเมนู */
+  project_ids: string[];
 }
 
 export interface CustomMenu extends IconFields {
@@ -46,16 +50,20 @@ export interface CustomMenu extends IconFields {
   name: string;
   order: number;
   cards: MenuCard[];
+  /** [] = ทุกโครงการ */
+  project_ids: string[];
 }
 
 type WithIconInput<T> = Omit<T, "icon"> & { icon: IconValue };
-export type MenuInput = WithIconInput<Pick<CustomMenu, "name" | keyof IconFields>>;
+export type MenuInput = WithIconInput<Pick<CustomMenu, "name" | "project_ids" | keyof IconFields>>;
 export type CardInput = WithIconInput<Omit<MenuCard, "id">>;
 
 const clamp = (n: unknown, min: number, max: number, fallback: number) => {
   const v = Math.round(Number(n));
   return Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fallback;
 };
+
+const toIds = (v: unknown): string[] => (Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === "string" && x !== ""))] : []);
 
 function toIcon(v: unknown): StoredFile | null {
   const f = v as Partial<StoredFile> | null | undefined;
@@ -75,6 +83,7 @@ function toCard(c: Partial<MenuCard>): MenuCard {
     active: Boolean(c.active),
     w: clamp(c.w, 1, GRID_COLS, 2),
     h: clamp(c.h, 2, MAX_ROWS, 5),
+    project_ids: toIds(c.project_ids),
   };
 }
 
@@ -101,8 +110,17 @@ function toMenu(snap: DocumentSnapshot): CustomMenu {
     color: d.color ?? CARD_COLORS[0],
     order: Number(d.order ?? 0),
     cards: toCards(d.cards),
+    project_ids: toIds(d.project_ids),
   };
 }
+
+/** แสดงในโครงการนี้ไหม — projectId = null คือหน้านอกโครงการ ซึ่งเห็นเฉพาะที่ตั้งเป็นทุกโครงการ */
+const inProject = (ids: string[], projectId: string | null) => ids.length === 0 || (projectId !== null && ids.includes(projectId));
+
+export const menuVisibleIn = (menu: CustomMenu, projectId: string | null) => inProject(menu.project_ids, projectId);
+
+export const cardVisibleIn = (menu: CustomMenu, card: MenuCard, projectId: string | null) =>
+  menuVisibleIn(menu, projectId) && inProject(card.project_ids, projectId);
 
 /** ลิงก์ที่เปิดได้จริง — รับเฉพาะ http(s) เพื่อกัน javascript: และลิงก์แปลก ๆ */
 export function safeUrl(url: string): string | null {

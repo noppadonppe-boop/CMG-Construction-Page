@@ -44,7 +44,7 @@ export type Permission =
   | "report.view"
   | "report.export"
   | "form.manage" // จัดการคลังมาตรฐานแบบฟอร์มกลาง (เพิ่ม/แก้/ลบ/อัปโหลด)
-  | "menu.manage" // สร้าง/แก้เมนูเพิ่มเติมและ Card ใน sidebar
+  | "menu.manage" // สร้าง/แก้เมนูเพิ่มเติมและ Card ใน sidebar — เฉพาะ MasterAdmin
   | "user.manage";
 
 const VIEW: Permission[] = ["daily.view", "issue.view", "document.view"];
@@ -54,7 +54,7 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[] | "all"> = {
   Admin: [
     "project.viewAll", "project.create", "project.edit", "project.delete", "progress.edit",
     ...VIEW, "daily.create", "issue.create", "issue.update",
-    "document.upload", "document.approve", "document.delete", "report.view", "report.export", "form.manage", "menu.manage",
+    "document.upload", "document.approve", "document.delete", "report.view", "report.export", "form.manage",
   ],
   Executive: [...VIEW, "report.view", "report.export"],
   ProjectManager: [
@@ -67,7 +67,7 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[] | "all"> = {
 };
 
 const ALL_PERMISSIONS = new Set<Permission>(
-  Object.values(ROLE_PERMISSIONS).flatMap((p) => (p === "all" ? [] : p)).concat("user.manage"),
+  Object.values(ROLE_PERMISSIONS).flatMap((p) => (p === "all" ? [] : p)).concat("user.manage", "menu.manage"),
 );
 
 /** สิทธิ์รวมของทุก role */

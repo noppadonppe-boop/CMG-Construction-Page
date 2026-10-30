@@ -4,28 +4,35 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState, useTransition } from "react";
 import { useAuth } from "@/lib/auth/context";
 import {
+  cardVisibleIn,
   deleteCard,
   deleteMenu,
   moveCard,
   reorderMenus,
   safeUrl,
+  menuVisibleIn,
   setCardActive,
   useMenus,
   type CustomMenu,
   type MenuCard,
 } from "@/lib/db/menus";
 import { DataError } from "@/lib/db/common";
+import { useProjects, type ProjectRecord } from "@/lib/db/projects";
 import { firebaseErrorMessage } from "@/lib/firebase/errors";
 import { EditorDialog } from "@/components/editor-dialog";
 import { Guard } from "@/components/guard";
 import { MenuIcon } from "@/components/icon-pickers";
 import { MenuDialog } from "@/components/menu-dialog";
+import { scopeLabel } from "@/components/project-scope-picker";
 import { SideMenuIcon } from "@/components/side-menu-icon";
 import { EmptyState, PageHeader, Skeleton } from "@/components/ui";
 import { CardDialog } from "./card-dialog";
 
 // ไม่ส่ง menu/card = เพิ่มใหม่
 type Editing = { kind: "menu"; menu?: CustomMenu } | { kind: "card"; card?: MenuCard } | { kind: "order" } | null;
+
+// ตัวกรอง "แสดงของ": "" = ทุกเมนู, ALL_ONLY = เฉพาะที่ตั้งเป็นทุกโครงการ, อื่น ๆ = id โครงการ
+const ALL_ONLY = "*";
 
 export default function ManageCardsPage() {
   return (
@@ -41,7 +48,8 @@ export default function ManageCardsPage() {
 /** จัดการ Cards & เมนู: เลือกเมนูจากแท็บ แล้วเพิ่ม/แก้/ลบ/เรียง Card ของเมนูนั้น */
 function CardManager() {
   const { userProfile } = useAuth();
-  const { menus, loading, error } = useMenus();
+  const { menus: allMenus, loading, error } = useMenus();
+  const { projects, byId } = useProjects();
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -50,9 +58,21 @@ function CardManager() {
   const [actionError, setActionError] = useState<string>();
   const actor = userProfile?.email ?? "";
 
-  // เมนูที่เลือกเก็บใน URL — ลิงก์ "จัดการ Cards" จากหน้าเมนูพามาถูกเมนู และรีเฟรชแล้วไม่หาย
+  // เมนูและตัวกรองโครงการเก็บใน URL — ลิงก์ "จัดการ Cards" จากหน้าเมนูพามาถูกเมนู และรีเฟรชแล้วไม่หาย
+  const filter = params.get("scope") ?? "";
+  const scopeOf = (f: string) => (f === ALL_ONLY ? null : f);
+  const menus = filter ? allMenus.filter((m) => menuVisibleIn(m, scopeOf(filter)) && (filter !== ALL_ONLY || m.project_ids.length === 0)) : allMenus;
   const menu = menus.find((m) => m.id === params.get("menu")) ?? menus[0];
-  const selectMenu = (id: string) => router.replace(`${pathname}?menu=${id}`, { scroll: false });
+  const go = (next: { menu?: string; scope?: string }) => {
+    const q = new URLSearchParams();
+    const m = next.menu ?? menu?.id;
+    const f = next.scope ?? filter;
+    if (m) q.set("menu", m);
+    if (f) q.set("scope", f);
+    router.replace(`${pathname}?${q}`, { scroll: false });
+  };
+  const selectMenu = (id: string) => go({ menu: id });
+  const cards = menu ? (filter ? menu.cards.filter((c) => cardVisibleIn(menu, c, scopeOf(filter))) : menu.cards) : [];
 
   const run = (fn: () => Promise<unknown>) =>
     startTransition(async () => {
@@ -74,7 +94,7 @@ function CardManager() {
         subtitle="เพิ่ม แก้ไข ลบ และจัดเรียงหมวดเมนูและ Card ต่างๆ"
         actions={
           <div className="flex flex-wrap gap-2">
-            <button type="button" className="btn bg-side text-white hover:opacity-90" onClick={() => setEditing({ kind: "order" })} disabled={menus.length < 2}>
+            <button type="button" className="btn bg-side text-white hover:opacity-90" onClick={() => setEditing({ kind: "order" })} disabled={allMenus.length < 2}>
               ↕ เรียงลำดับเมนู
             </button>
             <button type="button" className="btn bg-ok text-white hover:opacity-90" onClick={() => setEditing({ kind: "menu" })}>
@@ -88,7 +108,23 @@ function CardManager() {
       />
       {actionError && <p className="mb-3 rounded-lg bg-bad-soft px-3 py-2 text-sm text-bad">{actionError}</p>}
 
-      {menus.length === 0 ? (
+      {allMenus.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <label htmlFor="scope-filter" className="text-sm text-muted">แสดงของ</label>
+          <select id="scope-filter" className="input w-auto min-w-56" value={filter} onChange={(e) => go({ scope: e.target.value, menu: "" })}>
+            <option value="">ทุกเมนู</option>
+            <option value={ALL_ONLY}>เฉพาะที่แสดงทุกโครงการ</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>{p.code} : {p.name}</option>
+            ))}
+          </select>
+          {filter && filter !== ALL_ONLY && <span className="text-xs text-muted">รวมเมนูและ Card ที่แสดงทุกโครงการ</span>}
+        </div>
+      )}
+
+      {allMenus.length > 0 && menus.length === 0 ? (
+        <EmptyState>ไม่มีเมนูที่แสดงในโครงการนี้</EmptyState>
+      ) : menus.length === 0 ? (
         <EmptyState>
           ยังไม่มีเมนู — เริ่มจากสร้างเมนูแรก แล้วเพิ่ม Card ในเมนูนั้น
           <div className="mt-3">
@@ -112,6 +148,7 @@ function CardManager() {
                 >
                   <SideMenuIcon menu={m} />
                   {m.name}
+                  <ScopeBadge ids={m.project_ids} byId={byId} />
                   <span className="rounded-md bg-surface-2 px-1.5 text-xs text-muted tabular-nums">{m.cards.length}</span>
                 </button>
               );
@@ -125,6 +162,7 @@ function CardManager() {
                 <SideMenuIcon menu={menu} />
                 <span className="font-semibold">{menu.name}</span>
                 <span className="text-sm text-muted">({menu.cards.length} Cards)</span>
+                <span className="text-sm text-muted">· แสดงใน{menu.project_ids.length ? `โครงการ ${scopeLabel(menu.project_ids, byId, 4)}` : "ทุกโครงการ"}</span>
                 <div className="ml-auto flex gap-3 text-sm">
                   <button type="button" className="text-primary hover:underline" onClick={() => setEditing({ kind: "menu", menu })}>
                     ✎ ตั้งค่าเมนูนี้
@@ -140,7 +178,9 @@ function CardManager() {
                 </div>
               </div>
 
-              {menu.cards.length === 0 ? (
+              {cards.length === 0 && menu.cards.length > 0 ? (
+                <EmptyState>ไม่มี Card ของเมนูนี้ที่แสดงในโครงการที่กรอง</EmptyState>
+              ) : cards.length === 0 ? (
                 <EmptyState>
                   ยังไม่มี Card ในเมนูนี้
                   <div className="mt-3">
@@ -149,13 +189,14 @@ function CardManager() {
                 </EmptyState>
               ) : (
                 <ul className={`space-y-2 ${pending ? "opacity-70" : ""}`}>
-                  {menu.cards.map((card, i) => (
+                  {cards.map((card) => (
                     <li key={card.id}>
                       <CardRow
                         card={card}
+                        scope={card.project_ids.length ? scopeLabel(card.project_ids, byId) : undefined}
                         disabled={pending}
-                        first={i === 0}
-                        last={i === menu.cards.length - 1}
+                        first={card.id === menu.cards[0]?.id}
+                        last={card.id === menu.cards.at(-1)?.id}
                         onMove={(step) => run(() => moveCard(menu.id, card.id, step, actor))}
                         onToggle={() => run(() => setCardActive(menu.id, card.id, !card.active, actor))}
                         onEdit={() => setEditing({ kind: "card", card })}
@@ -173,14 +214,21 @@ function CardManager() {
       {editing?.kind === "menu" && (
         <MenuDialog menu={editing.menu} nextOrder={(menus.at(-1)?.order ?? -1) + 1} onSaved={selectMenu} onClose={() => setEditing(null)} />
       )}
-      {editing?.kind === "card" && menu && <CardDialog menuId={menu.id} menuName={menu.name} card={editing.card} onClose={() => setEditing(null)} />}
-      {editing?.kind === "order" && <OrderDialog menus={menus} onClose={() => setEditing(null)} />}
+      {editing?.kind === "card" && menu && <CardDialog menu={menu} card={editing.card} onClose={() => setEditing(null)} />}
+      {editing?.kind === "order" && <OrderDialog menus={allMenus} onClose={() => setEditing(null)} />}
     </>
   );
 }
 
+/** ป้ายโครงการบนแท็บเมนู — ไม่แสดงถ้าเป็นทุกโครงการ */
+function ScopeBadge({ ids, byId }: { ids: string[]; byId: Map<string, ProjectRecord> }) {
+  if (ids.length === 0) return null;
+  return <span className="rounded-md bg-warn-soft px-1.5 text-[11px] text-warn">{scopeLabel(ids, byId, 1)}</span>;
+}
+
 function CardRow({
   card,
+  scope,
   disabled,
   first,
   last,
@@ -190,6 +238,8 @@ function CardRow({
   onDelete,
 }: {
   card: MenuCard;
+  /** ป้ายโครงการเมื่อ Card เลือกเฉพาะบางโครงการ (undefined = ตามเมนู) */
+  scope?: string;
   disabled: boolean;
   first: boolean;
   last: boolean;
@@ -205,6 +255,7 @@ function CardRow({
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="font-semibold">{card.name}</span>
+          {scope && <span className="rounded-full bg-warn-soft px-2 py-0.5 text-[11px] text-warn">เฉพาะ {scope}</span>}
           {!hasUrl && <span className="rounded-full bg-warn-soft px-2 py-0.5 text-[11px] text-warn">ยังไม่มี URL</span>}
           {card.active ? (
             <span className="rounded-full bg-ok-soft px-2 py-0.5 text-[11px] text-ok">✓ Active</span>

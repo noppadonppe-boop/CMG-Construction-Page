@@ -20,9 +20,9 @@ npm run dev
 2. **Authentication → Settings → Authorized domains** เพิ่มโดเมนที่ deploy จริง (`localhost` มีให้แล้ว)
 3. **Firestore Database** และ **Storage** ต้องสร้างไว้แล้ว และ Rules ต้องอนุญาตให้อ่าน/เขียนที่ `Cmg-Cons-Page-Claude/root/**`
 
-> Firestore Rules ที่ใช้กับแอปนี้อยู่ใน `firebase/firestore.rules` — ผู้ใช้ที่ล็อกอินอ่าน/เขียนได้ทุกคอลเลกชัน ยกเว้น `menus` (เมนูเพิ่มเติม) และ `formStandards` (มาตรฐานแบบฟอร์ม) ที่เขียนได้เฉพาะ MasterAdmin/Admin ที่อนุมัติแล้ว · deploy ด้วย `firebase deploy --only firestore:rules`
+> Firestore Rules ที่ใช้กับแอปนี้อยู่ใน `firebase/firestore.rules` — ผู้ใช้ที่ล็อกอินอ่าน/เขียนได้ทุกคอลเลกชัน ยกเว้น `menus` (เมนูเพิ่มเติม) ที่เขียนได้เฉพาะ MasterAdmin และ `formStandards` (มาตรฐานแบบฟอร์ม) ที่เขียนได้เฉพาะ MasterAdmin/Admin ที่อนุมัติแล้ว · deploy ด้วย `firebase deploy --only firestore:rules`
 >
-> Storage Rules อยู่ใน `firebase/storage.rules` — ผู้ใช้ที่ล็อกอินอ่าน/เขียนไฟล์ใต้ `Cmg-Cons-Page-Claude/root/**` ได้ ยกเว้นไอคอนเมนู (`menus/icons`) ที่อัปโหลดได้เฉพาะ MasterAdmin/Admin (ตรวจ Role ด้วย `firestore.get()` จึงต้องให้บัญชี `service-<เลขโปรเจกต์>@gcp-sa-firebasestorage.iam.gserviceaccount.com` มี IAM role **Firebase Rules Firestore Service Agent** ไม่งั้นอัปโหลดไอคอนจะถูกปฏิเสธทุกครั้ง) · deploy ด้วย `firebase deploy --only storage` · ถ้าสร้างฐานข้อมูลแบบ **test mode** Rules จะหมดอายุใน 30 วัน
+> Storage Rules อยู่ใน `firebase/storage.rules` — ผู้ใช้ที่ล็อกอินอ่าน/เขียนไฟล์ใต้ `Cmg-Cons-Page-Claude/root/**` ได้ ยกเว้นไอคอนเมนู (`menus/icons`) ที่อัปโหลดได้เฉพาะ MasterAdmin (ตรวจ Role ด้วย `firestore.get()` จึงต้องให้บัญชี `service-<เลขโปรเจกต์>@gcp-sa-firebasestorage.iam.gserviceaccount.com` มี IAM role **Firebase Rules Firestore Service Agent** ไม่งั้นอัปโหลดไอคอนจะถูกปฏิเสธทุกครั้ง) · deploy ด้วย `firebase deploy --only storage` · ถ้าสร้างฐานข้อมูลแบบ **test mode** Rules จะหมดอายุใน 30 วัน
 
 ## Deploy (web.app)
 

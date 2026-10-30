@@ -2,7 +2,7 @@ rules_version = '2';
 
 // แอปอัปโหลด/เปิดไฟล์จากเบราว์เซอร์โดยตรงในชื่อผู้ใช้ที่ล็อกอิน (ไฟล์ทั้งหมดอยู่ใต้ Cmg-Cons-Page-Claude/root)
 // - ทุก path: ผู้ใช้ที่ล็อกอินแล้วอ่าน/เขียนได้ (เหมือน Firestore — แอปตรวจสิทธิ์ตาม Role ฝั่งหน้าเว็บ)
-// - menus/icons (ไอคอนเมนูเพิ่มเติม): อัปโหลด/ลบได้เฉพาะ MasterAdmin หรือ Admin ที่อนุมัติแล้ว
+// - menus/icons (ไอคอนเมนูเพิ่มเติม): อัปโหลด/ลบได้เฉพาะ MasterAdmin ที่อนุมัติแล้ว (ตรงกับสิทธิ์แก้เมนูใน Firestore)
 //   รับเฉพาะรูป PNG / WebP ไม่เกิน 200 KB (หน้าเว็บย่อเหลือ 128px ก่อนอัปโหลด)
 // - นอก Cmg-Cons-Page-Claude/root: ปิดทั้งหมด
 //
@@ -13,12 +13,12 @@ service firebase.storage {
       return request.auth != null;
     }
 
-    function isApprovedAdmin() {
+    function isApprovedMasterAdmin() {
       let me = firestore.get(/databases/(default)/documents/Cmg-Cons-Page-Claude/root/users/$(request.auth.token.email.lower())).data;
       return signedIn()
         && request.auth.token.email != null
         && me.status == 'approved'
-        && me.role.hasAny(['MasterAdmin', 'Admin']);
+        && me.role.hasAny(['MasterAdmin']);
     }
 
     match /Cmg-Cons-Page-Claude/root/{section}/{rest=**} {
@@ -27,8 +27,8 @@ service firebase.storage {
     }
 
     match /Cmg-Cons-Page-Claude/root/menus/icons/{fileName} {
-      allow delete: if isApprovedAdmin();
-      allow create, update: if isApprovedAdmin()
+      allow delete: if isApprovedMasterAdmin();
+      allow create, update: if isApprovedMasterAdmin()
         && request.resource.size < 200 * 1024
         && request.resource.contentType.matches('image/(png|webp)');
     }

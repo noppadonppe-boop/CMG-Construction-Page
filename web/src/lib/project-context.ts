@@ -18,6 +18,8 @@ export function useCurrentProjectId(): string | null {
 
 /** URL เดิมแต่เปลี่ยนเป็นโครงการอื่น — หน้ารายละเอียดของรายการจะกลับไปหน้ารายการของหมวดนั้น */
 export function switchProjectHref(pathname: string, nextId: string) {
+  const menu = pathname.match(/^\/m\/[^/]+/);
+  if (menu) return `${menu[0]}?project=${nextId}`;
   const sub = pathname.match(/^\/projects\/[^/]+(\/(?:edit|progress|report-settings))?/);
   if (sub) return `/projects/${nextId}${sub[1] ?? ""}`;
   const section = pathname.match(/^\/(daily-reports|issues|documents|reports)/)?.[1];
