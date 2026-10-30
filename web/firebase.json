@@ -5,5 +5,12 @@
   },
   "storage": {
     "rules": "firebase/storage.rules"
-  }
+  },
+  "apphosting": [
+    {
+      "backendId": "cmg-project-hub",
+      "rootDir": "/",
+      "ignore": ["node_modules", ".git", ".next", "firebase-debug.log", "firebase-debug.*.log", "*.tsbuildinfo"]
+    }
+  ]
 }
