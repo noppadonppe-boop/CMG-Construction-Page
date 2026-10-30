@@ -22,7 +22,7 @@ npm run dev
 
 > Firestore Rules ที่ใช้กับแอปนี้อยู่ใน `firebase/firestore.rules` — ผู้ใช้ที่ล็อกอินอ่าน/เขียนได้ทุกคอลเลกชัน ยกเว้น `menus` (เมนูเพิ่มเติม) และ `formStandards` (มาตรฐานแบบฟอร์ม) ที่เขียนได้เฉพาะ MasterAdmin/Admin ที่อนุมัติแล้ว · deploy ด้วย `firebase deploy --only firestore:rules`
 >
-> ⚠️ อย่า deploy `firebase/storage.rules` (ของเวอร์ชันเดิม ปิดการเข้าถึงทั้งหมด) · ถ้าสร้างฐานข้อมูลแบบ **test mode** Rules จะหมดอายุใน 30 วัน
+> Storage Rules อยู่ใน `firebase/storage.rules` — ผู้ใช้ที่ล็อกอินอ่าน/เขียนไฟล์ใต้ `Cmg-Cons-Page-Claude/root/**` ได้ ยกเว้นไอคอนเมนู (`menus/icons`) ที่อัปโหลดได้เฉพาะ MasterAdmin/Admin · deploy ด้วย `firebase deploy --only storage` · ถ้าสร้างฐานข้อมูลแบบ **test mode** Rules จะหมดอายุใน 30 วัน
 
 ## ระบบผู้ใช้
 
