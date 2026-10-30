@@ -1,67 +1,58 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState, useTransition, type ReactNode } from "react";
+import { Suspense, useState, useTransition } from "react";
 import { useAuth } from "@/lib/auth/context";
 import {
   deleteCard,
-  deleteLink,
   deleteMenu,
   moveCard,
-  moveLink,
-  moveMenu,
+  reorderMenus,
   safeUrl,
-  setLinkActive,
+  setCardActive,
   useMenus,
   type CustomMenu,
   type MenuCard,
-  type MenuLink,
 } from "@/lib/db/menus";
 import { DataError } from "@/lib/db/common";
 import { firebaseErrorMessage } from "@/lib/firebase/errors";
+import { EditorDialog } from "@/components/editor-dialog";
 import { Guard } from "@/components/guard";
 import { MenuIcon } from "@/components/icon-pickers";
 import { MenuDialog } from "@/components/menu-dialog";
+import { SideMenuIcon } from "@/components/side-menu-icon";
 import { EmptyState, PageHeader, Skeleton } from "@/components/ui";
-import { ActiveSwitch } from "./active-switch";
 import { CardDialog } from "./card-dialog";
-import { LinkDialog } from "./link-dialog";
 
-// ไม่ส่ง menu/card/link = เพิ่มใหม่
-type Editing = { kind: "menu"; menu?: CustomMenu } | { kind: "card"; card?: MenuCard } | { kind: "link"; link?: MenuLink } | null;
+// ไม่ส่ง menu/card = เพิ่มใหม่
+type Editing = { kind: "menu"; menu?: CustomMenu } | { kind: "card"; card?: MenuCard } | { kind: "order" } | null;
 
-export default function MenusPage() {
+export default function ManageCardsPage() {
   return (
     <Guard permission="menu.manage">
       {/* อ่าน ?menu= จาก URL ตอน runtime จึงต้องอยู่หลัง Suspense */}
       <Suspense fallback={<Skeleton />}>
-        <MenuManager />
+        <CardManager />
       </Suspense>
     </Guard>
   );
 }
 
-/** จัดการเมนูเพิ่มเติม: เลือกเมนู → เลือก Card → จัดการลิงก์ใน Card */
-function MenuManager() {
+/** จัดการ Cards & เมนู: เลือกเมนูจากแท็บ แล้วเพิ่ม/แก้/ลบ/เรียง Card ของเมนูนั้น */
+function CardManager() {
   const { userProfile } = useAuth();
   const { menus, loading, error } = useMenus();
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
-  const [cardId, setCardId] = useState<string>();
   const [editing, setEditing] = useState<Editing>(null);
   const [pending, startTransition] = useTransition();
   const [actionError, setActionError] = useState<string>();
   const actor = userProfile?.email ?? "";
 
-  // เมนูที่เลือกเก็บใน URL — ลิงก์ "จัดการเมนูนี้" จากหน้าเมนูพามาถูกเมนู และรีเฟรชแล้วไม่หาย
+  // เมนูที่เลือกเก็บใน URL — ลิงก์ "จัดการ Cards" จากหน้าเมนูพามาถูกเมนู และรีเฟรชแล้วไม่หาย
   const menu = menus.find((m) => m.id === params.get("menu")) ?? menus[0];
-  const card = menu?.cards.find((c) => c.id === cardId) ?? menu?.cards[0];
-  const selectMenu = (id: string) => {
-    setCardId(undefined);
-    router.replace(`${pathname}?menu=${id}`, { scroll: false });
-  };
+  const selectMenu = (id: string) => router.replace(`${pathname}?menu=${id}`, { scroll: false });
 
   const run = (fn: () => Promise<unknown>) =>
     startTransition(async () => {
@@ -79,206 +70,198 @@ function MenuManager() {
   return (
     <>
       <PageHeader
-        title="จัดการเมนู"
-        subtitle="เพิ่ม/ลบเมนูใน Sidebar, Card ในแต่ละเมนู และลิงก์ในแต่ละ Card"
-        actions={menu && <Link href={`/m/${menu.id}`} className="btn">ดูหน้าเมนู “{menu.name}”</Link>}
+        title="จัดการ Cards & เมนู"
+        subtitle="เพิ่ม แก้ไข ลบ และจัดเรียงหมวดเมนูและ Card ต่างๆ"
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="btn bg-side text-white hover:opacity-90" onClick={() => setEditing({ kind: "order" })} disabled={menus.length < 2}>
+              ↕ เรียงลำดับเมนู
+            </button>
+            <button type="button" className="btn bg-ok text-white hover:opacity-90" onClick={() => setEditing({ kind: "menu" })}>
+              + เพิ่มเมนูใหม่
+            </button>
+            <button type="button" className="btn btn-primary" onClick={() => setEditing({ kind: "card" })} disabled={!menu}>
+              + เพิ่ม Card ใหม่
+            </button>
+          </div>
+        }
       />
       {actionError && <p className="mb-3 rounded-lg bg-bad-soft px-3 py-2 text-sm text-bad">{actionError}</p>}
 
-      <div className={`grid gap-4 lg:grid-cols-[minmax(0,15rem)_minmax(0,1fr)_minmax(0,1.4fr)] ${pending ? "opacity-70" : ""}`}>
-        <Column step={1} title="เมนู" count={menus.length} onAdd={() => setEditing({ kind: "menu" })} addLabel="+ เมนู">
-          {menus.length === 0 ? (
-            <EmptyState>ยังไม่มีเมนู</EmptyState>
-          ) : (
-            menus.map((m, i) => (
-              <Row
-                key={m.id}
-                selected={m.id === menu?.id}
-                onSelect={() => selectMenu(m.id)}
-                icon={<MenuIcon emoji={m.emoji} icon={m.icon} color={m.color} name={m.name} size={32} />}
-                title={m.name}
-                subtitle={`${m.cards.length} Cards`}
-                disabled={pending}
-                first={i === 0}
-                last={i === menus.length - 1}
-                onMove={(step) => run(() => moveMenu(menus, m.id, step))}
-                onEdit={() => setEditing({ kind: "menu", menu: m })}
-                onDelete={() =>
-                  confirm(`ลบเมนู "${m.name}" พร้อม Card ${m.cards.length} ใบ และลิงก์ทั้งหมด?`) && run(() => deleteMenu(m))
-                }
-              />
-            ))
-          )}
-        </Column>
+      {menus.length === 0 ? (
+        <EmptyState>
+          ยังไม่มีเมนู — เริ่มจากสร้างเมนูแรก แล้วเพิ่ม Card ในเมนูนั้น
+          <div className="mt-3">
+            <button type="button" className="btn btn-primary" onClick={() => setEditing({ kind: "menu" })}>+ เพิ่มเมนูใหม่</button>
+          </div>
+        </EmptyState>
+      ) : (
+        <>
+          {/* แท็บเมนู */}
+          <div role="tablist" aria-label="เลือกเมนู" className="mb-4 flex flex-wrap gap-1 rounded-xl border border-border bg-surface-2 p-2">
+            {menus.map((m) => {
+              const on = m.id === menu?.id;
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={on}
+                  onClick={() => selectMenu(m.id)}
+                  className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm ${on ? "border border-primary/30 bg-surface font-semibold text-primary shadow-sm" : "text-text hover:bg-surface"}`}
+                >
+                  <SideMenuIcon menu={m} />
+                  {m.name}
+                  <span className="rounded-md bg-surface-2 px-1.5 text-xs text-muted tabular-nums">{m.cards.length}</span>
+                </button>
+              );
+            })}
+          </div>
 
-        <Column step={2} title={menu ? `Card ในเมนู “${menu.name}”` : "Card"} count={menu?.cards.length} onAdd={menu && (() => setEditing({ kind: "card" }))} addLabel="+ Card">
-          {!menu ? (
-            <EmptyState>สร้างเมนูก่อน แล้วจึงเพิ่ม Card</EmptyState>
-          ) : menu.cards.length === 0 ? (
-            <EmptyState>ยังไม่มี Card — Card คือกลุ่มที่รวมลิงก์หลายรายการ</EmptyState>
-          ) : (
-            menu.cards.map((c, i) => (
-              <Row
-                key={c.id}
-                selected={c.id === card?.id}
-                onSelect={() => setCardId(c.id)}
-                icon={<MenuIcon emoji={c.emoji} icon={c.icon} color={c.color} name={c.name} size={32} />}
-                title={c.name}
-                subtitle={`${c.links.length} ลิงก์ · ขนาด ${c.w}×${c.h}`}
-                disabled={pending}
-                first={i === 0}
-                last={i === menu.cards.length - 1}
-                onMove={(step) => run(() => moveCard(menu.id, c.id, step, actor))}
-                onEdit={() => setEditing({ kind: "card", card: c })}
-                onDelete={() => confirm(`ลบ Card "${c.name}" และลิงก์ ${c.links.length} รายการ?`) && run(() => deleteCard(menu.id, c, actor))}
-              />
-            ))
-          )}
-        </Column>
-
-        <Column step={3} title={card ? `ลิงก์ใน “${card.name}”` : "ลิงก์"} count={card?.links.length} onAdd={card && (() => setEditing({ kind: "link" }))} addLabel="+ ลิงก์">
-          {!menu || !card ? (
-            <EmptyState>เลือกหรือเพิ่ม Card ก่อน แล้วจึงเพิ่มลิงก์</EmptyState>
-          ) : card.links.length === 0 ? (
-            <EmptyState>ยังไม่มีลิงก์ใน Card นี้</EmptyState>
-          ) : (
-            card.links.map((l, i) => (
-              <Row
-                key={l.id}
-                icon={<MenuIcon emoji={l.emoji} icon={l.icon} color={l.color} name={l.name} size={32} />}
-                title={l.name}
-                subtitle={
-                  <>
-                    <span className={`font-mono ${safeUrl(l.url) ? "" : "text-warn"}`}>{l.url === "#" ? "ยังไม่มี URL" : l.url}</span>
-                    {l.description && <span className="block truncate">{l.description}</span>}
-                  </>
-                }
-                extra={
-                  <ActiveSwitch
-                    label={`เปิดใช้งาน ${l.name}`}
-                    checked={l.active}
+          {menu && (
+            <>
+              {/* หัวเมนูที่เลือก */}
+              <div className="mb-3 flex flex-wrap items-center gap-2.5 rounded-xl border border-primary/20 bg-primary-soft/60 px-4 py-3">
+                <SideMenuIcon menu={menu} />
+                <span className="font-semibold">{menu.name}</span>
+                <span className="text-sm text-muted">({menu.cards.length} Cards)</span>
+                <div className="ml-auto flex gap-3 text-sm">
+                  <button type="button" className="text-primary hover:underline" onClick={() => setEditing({ kind: "menu", menu })}>
+                    ✎ ตั้งค่าเมนูนี้
+                  </button>
+                  <button
+                    type="button"
+                    className="text-bad hover:underline"
                     disabled={pending}
-                    onChange={(active) => run(() => setLinkActive(menu.id, card.id, l.id, active, actor))}
-                  />
-                }
-                disabled={pending}
-                first={i === 0}
-                last={i === card.links.length - 1}
-                onMove={(step) => run(() => moveLink(menu.id, card.id, l.id, step, actor))}
-                onEdit={() => setEditing({ kind: "link", link: l })}
-                onDelete={() => confirm(`ลบลิงก์ "${l.name}"?`) && run(() => deleteLink(menu.id, card.id, l, actor))}
-              />
-            ))
+                    onClick={() => confirm(`ลบเมนู "${menu.name}" และ Card ทั้งหมด ${menu.cards.length} ใบ?`) && run(() => deleteMenu(menu))}
+                  >
+                    ลบเมนู
+                  </button>
+                </div>
+              </div>
+
+              {menu.cards.length === 0 ? (
+                <EmptyState>
+                  ยังไม่มี Card ในเมนูนี้
+                  <div className="mt-3">
+                    <button type="button" className="btn btn-primary" onClick={() => setEditing({ kind: "card" })}>+ เพิ่ม Card แรก</button>
+                  </div>
+                </EmptyState>
+              ) : (
+                <ul className={`space-y-2 ${pending ? "opacity-70" : ""}`}>
+                  {menu.cards.map((card, i) => (
+                    <li key={card.id}>
+                      <CardRow
+                        card={card}
+                        disabled={pending}
+                        first={i === 0}
+                        last={i === menu.cards.length - 1}
+                        onMove={(step) => run(() => moveCard(menu.id, card.id, step, actor))}
+                        onToggle={() => run(() => setCardActive(menu.id, card.id, !card.active, actor))}
+                        onEdit={() => setEditing({ kind: "card", card })}
+                        onDelete={() => confirm(`ลบ Card "${card.name}"?`) && run(() => deleteCard(menu.id, card, actor))}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
           )}
-        </Column>
-      </div>
+        </>
+      )}
 
       {editing?.kind === "menu" && (
-        <MenuDialog
-          menu={editing.menu}
-          nextOrder={(menus.at(-1)?.order ?? -1) + 1}
-          onSaved={selectMenu}
-          onClose={() => setEditing(null)}
-        />
+        <MenuDialog menu={editing.menu} nextOrder={(menus.at(-1)?.order ?? -1) + 1} onSaved={selectMenu} onClose={() => setEditing(null)} />
       )}
-      {editing?.kind === "card" && menu && (
-        <CardDialog menuId={menu.id} menuName={menu.name} card={editing.card} onSaved={setCardId} onClose={() => setEditing(null)} />
-      )}
-      {editing?.kind === "link" && menu && card && (
-        <LinkDialog menuId={menu.id} cardId={card.id} cardName={card.name} link={editing.link} onClose={() => setEditing(null)} />
-      )}
+      {editing?.kind === "card" && menu && <CardDialog menuId={menu.id} menuName={menu.name} card={editing.card} onClose={() => setEditing(null)} />}
+      {editing?.kind === "order" && <OrderDialog menus={menus} onClose={() => setEditing(null)} />}
     </>
   );
 }
 
-function Column({
-  step,
-  title,
-  count,
-  addLabel,
-  onAdd,
-  children,
-}: {
-  step: number;
-  title: string;
-  count?: number;
-  addLabel: string;
-  onAdd?: (() => void) | null;
-  children: ReactNode;
-}) {
-  return (
-    <section className="card flex min-w-0 flex-col gap-2 p-3">
-      <header className="flex items-center gap-2 pb-1">
-        <span className="grid size-6 flex-none place-items-center rounded-full bg-primary-soft text-xs font-bold text-primary">{step}</span>
-        <h2 className="min-w-0 flex-1 truncate font-semibold">
-          {title}
-          {count !== undefined && <span className="ml-1 font-normal text-muted">({count})</span>}
-        </h2>
-        {onAdd && (
-          <button type="button" className="btn btn-primary px-2.5 py-1 text-sm" onClick={onAdd}>
-            {addLabel}
-          </button>
-        )}
-      </header>
-      {children}
-    </section>
-  );
-}
-
-/** แถวรายการ: คลิกเพื่อเลือก (ถ้ามี onSelect) + ปุ่มเลื่อน/แก้/ลบ */
-function Row({
-  selected,
-  onSelect,
-  icon,
-  title,
-  subtitle,
-  extra,
+function CardRow({
+  card,
   disabled,
   first,
   last,
   onMove,
+  onToggle,
   onEdit,
   onDelete,
 }: {
-  selected?: boolean;
-  onSelect?: () => void;
-  icon: ReactNode;
-  title: string;
-  subtitle: ReactNode;
-  extra?: ReactNode;
+  card: MenuCard;
   disabled: boolean;
   first: boolean;
   last: boolean;
   onMove: (step: -1 | 1) => void;
+  onToggle: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const info = (
-    <>
-      {icon}
-      <div className="min-w-0 flex-1">
-        <div className="truncate font-medium">{title}</div>
-        <div className="truncate text-xs text-muted">{subtitle}</div>
-      </div>
-    </>
-  );
+  const hasUrl = Boolean(safeUrl(card.url));
   return (
-    <div className={`flex flex-wrap items-center gap-2 rounded-xl border p-2 ${selected ? "border-primary bg-primary-soft/50" : "border-border"}`}>
-      {onSelect ? (
-        <button type="button" className="flex min-w-0 flex-1 items-center gap-2.5 text-left" onClick={onSelect} aria-pressed={selected}>
-          {info}
-        </button>
-      ) : (
-        <div className="flex min-w-0 flex-1 items-center gap-2.5">{info}</div>
-      )}
-      {extra}
-      <div className="flex flex-none">
+    <div className="card flex items-center gap-3 p-3">
+      <MenuIcon emoji={card.emoji} glyph={card.glyph} icon={card.icon} color={card.color} name={card.name} size={40} />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="font-semibold">{card.name}</span>
+          {!hasUrl && <span className="rounded-full bg-warn-soft px-2 py-0.5 text-[11px] text-warn">ยังไม่มี URL</span>}
+          {card.active ? (
+            <span className="rounded-full bg-ok-soft px-2 py-0.5 text-[11px] text-ok">✓ Active</span>
+          ) : (
+            <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] text-muted">Inactive</span>
+          )}
+        </div>
+        <div className="truncate font-mono text-xs text-muted">{hasUrl ? card.url : "—"}</div>
+        {card.description && <div className="truncate text-sm text-muted">{card.description}</div>}
+      </div>
+      <div className="flex flex-none items-center">
         <ToolButton label="เลื่อนขึ้น" d="m18 15-6-6-6 6" disabled={first || disabled} onClick={() => onMove(-1)} />
         <ToolButton label="เลื่อนลง" d="m6 9 6 6 6-6" disabled={last || disabled} onClick={() => onMove(1)} />
+        <button
+          type="button"
+          title={card.active ? "ปิด Active" : "ตั้งเป็น Active"}
+          aria-label={card.active ? "ปิด Active" : "ตั้งเป็น Active"}
+          aria-pressed={card.active}
+          disabled={disabled}
+          onClick={onToggle}
+          className={`grid size-8 place-items-center rounded-md hover:bg-surface-2 ${card.active ? "text-ok" : "text-border"}`}
+        >
+          <svg viewBox="0 0 24 24" className="size-5" aria-hidden="true">
+            <circle cx="12" cy="12" r="10" fill="currentColor" />
+            <path d="m8 12.5 2.5 2.5L16 9.5" fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
         <ToolButton label="แก้ไข" d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" onClick={onEdit} />
         <ToolButton label="ลบ" d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" danger disabled={disabled} onClick={onDelete} />
       </div>
     </div>
+  );
+}
+
+/** เรียงลำดับเมนูใน Sidebar — จัดในหน้าต่างก่อน แล้วบันทึกครั้งเดียว */
+function OrderDialog({ menus, onClose }: { menus: CustomMenu[]; onClose: () => void }) {
+  const [list, setList] = useState(menus);
+  const move = (i: number, step: -1 | 1) =>
+    setList((prev) => {
+      const next = [...prev];
+      [next[i], next[i + step]] = [next[i + step], next[i]];
+      return next;
+    });
+  return (
+    <EditorDialog title="เรียงลำดับเมนู" subtitle="ลำดับนี้ใช้ทั้งใน Sidebar และแท็บด้านบน" isNew={false} submitLabel="บันทึกลำดับ" validate={() => undefined} save={() => reorderMenus(list)} onClose={onClose}>
+      <ol className="space-y-1.5">
+        {list.map((m, i) => (
+          <li key={m.id} className="flex items-center gap-2.5 rounded-lg border border-border px-3 py-2">
+            <span className="w-5 text-right text-xs text-muted tabular-nums">{i + 1}</span>
+            <SideMenuIcon menu={m} />
+            <span className="min-w-0 flex-1 truncate">{m.name}</span>
+            <ToolButton label="เลื่อนขึ้น" d="m18 15-6-6-6 6" disabled={i === 0} onClick={() => move(i, -1)} />
+            <ToolButton label="เลื่อนลง" d="m6 9 6 6 6-6" disabled={i === list.length - 1} onClick={() => move(i, 1)} />
+          </li>
+        ))}
+      </ol>
+    </EditorDialog>
   );
 }
 
@@ -290,7 +273,7 @@ function ToolButton({ label, d, onClick, disabled, danger }: { label: string; d:
       aria-label={label}
       disabled={disabled}
       onClick={onClick}
-      className={`grid size-7 place-items-center rounded-md hover:bg-surface-2 disabled:opacity-30 ${danger ? "text-bad" : "text-muted"}`}
+      className={`grid size-8 place-items-center rounded-md hover:bg-surface-2 disabled:opacity-30 ${danger ? "text-bad" : "text-muted"}`}
     >
       <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth={2}>
         <path d={d} />

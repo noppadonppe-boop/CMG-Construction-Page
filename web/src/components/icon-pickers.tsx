@@ -4,6 +4,7 @@
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { CARD_COLORS, type IconValue } from "@/lib/db/menus";
+import { GLYPH_NAMES, GLYPHS } from "./glyphs";
 
 /** ไอคอนย่อเหลือด้านยาวไม่เกินนี้ (px) — แสดงจริงไม่เกิน 56px จึงพอสำหรับจอความละเอียดสูง */
 const ICON_SIZE = 128;
@@ -124,20 +125,21 @@ function BlobImage({ blob, className, style }: { blob: Blob; className: string; 
   return <img ref={ref} alt="" className={className} style={style} />;
 }
 
-/** เลือกไอคอน: Emoji หรืออัปโหลดรูป — ถ้ามีรูปจะแสดงรูปก่อน emoji */
-export function IconPicker({
-  emoji,
-  icon,
-  color,
-  name,
-  onChange,
-}: {
-  emoji: string;
-  icon: IconValue;
-  color: string;
-  name: string;
-  onChange: (patch: { emoji?: string; icon?: IconValue }) => void;
-}) {
+/** ไอคอนจากชุด GLYPHS (เส้น) */
+export function Glyph({ name, className = "size-5" }: { name: string; className?: string }) {
+  const d = GLYPHS[name];
+  if (!d) return null;
+  return (
+    <svg viewBox="0 0 24 24" className={`flex-none ${className}`} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={d} />
+    </svg>
+  );
+}
+
+type IconPatch = { emoji?: string; glyph?: string; icon?: IconValue };
+
+/** เลือกไอคอน: จากชุดไอคอน, Emoji หรืออัปโหลดรูป — เลือกแบบใดแบบหนึ่ง แบบอื่นจะถูกล้าง */
+export function IconPicker({ emoji, glyph, icon, onChange }: { emoji: string; glyph: string; icon: IconValue; onChange: (patch: IconPatch) => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
@@ -147,7 +149,7 @@ export function IconPicker({
     setBusy(true);
     setError(undefined);
     try {
-      onChange({ icon: await prepareIcon(file) });
+      onChange({ icon: await prepareIcon(file), glyph: "", emoji: "" });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -156,40 +158,65 @@ export function IconPicker({
     }
   }
 
+  const selected = !icon && !emoji ? glyph : "";
   return (
-    <div>
-      <div className="flex flex-wrap items-center gap-3">
-        <MenuIcon emoji={emoji} icon={icon} color={color} name={name} size={48} />
-        <div className="flex flex-wrap gap-2">
-          <button type="button" className="btn" onClick={() => inputRef.current?.click()} disabled={busy}>
-            {busy ? "กำลังเตรียมรูป..." : icon ? "เปลี่ยนรูป" : "อัปโหลดรูป"}
+    <div className="space-y-2">
+      <div className="grid grid-cols-8 gap-1.5 rounded-xl border border-border bg-surface-2 p-2 sm:grid-cols-10">
+        {GLYPH_NAMES.map((g) => (
+          <button
+            key={g}
+            type="button"
+            title={g}
+            aria-label={`ไอคอน ${g}`}
+            aria-pressed={g === selected}
+            onClick={() => onChange({ glyph: g, emoji: "", icon: null })}
+            className={`grid aspect-square place-items-center rounded-lg border ${
+              g === selected ? "border-ok bg-ok-soft text-ok" : "border-transparent text-muted hover:bg-surface hover:text-text"
+            }`}
+          >
+            <Glyph name={g} className="size-[18px]" />
           </button>
-          {icon && (
-            <button type="button" className="btn text-bad" onClick={() => onChange({ icon: null })}>
-              ลบรูป
-            </button>
-          )}
-        </div>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-start gap-2">
+        <EmojiPicker value={emoji} onChange={(e) => onChange({ emoji: e, glyph: e ? "" : glyph, icon: e ? null : icon })} />
+        <button type="button" className="btn" onClick={() => inputRef.current?.click()} disabled={busy}>
+          {busy ? "กำลังเตรียมรูป..." : icon ? "เปลี่ยนรูป" : "อัปโหลดรูป"}
+        </button>
+        {icon && (
+          <button type="button" className="btn text-bad" onClick={() => onChange({ icon: null })}>
+            ลบรูป
+          </button>
+        )}
         <input ref={inputRef} type="file" accept={ICON_ACCEPT} className="hidden" onChange={(e) => pick(e.target.files?.[0])} />
       </div>
-      <p className="mt-1 text-xs text-muted">PNG / WebP / SVG / JPG — ระบบย่อเหลือ {ICON_SIZE}px ให้อัตโนมัติ (แนะนำรูปสี่เหลี่ยมจัตุรัส พื้นหลังโปร่งใส)</p>
-      {error && <p className="mt-1 text-xs text-bad">{error}</p>}
-      {!icon && (
-        <div className="mt-2">
-          <div className="mb-1 text-xs text-muted">หรือใช้ Emoji</div>
-          <EmojiPicker value={emoji} onChange={(e) => onChange({ emoji: e })} />
-        </div>
-      )}
+      <p className="text-xs text-muted">อัปโหลดรูป PNG / WebP / SVG / JPG ได้ — ระบบย่อเหลือ {ICON_SIZE}px ให้ (แนะนำสี่เหลี่ยมจัตุรัส พื้นหลังโปร่งใส)</p>
+      {error && <p className="text-xs text-bad">{error}</p>}
     </div>
   );
 }
 
-/** ไอคอนของเมนู/Card/ลิงก์: รูปภาพ → emoji บนพื้นอ่อน → ตัวอักษรแรกบนพื้นสี */
-export function MenuIcon({ emoji, icon, color, name, size = 48 }: { emoji: string; icon?: IconValue; color: string; name: string; size?: number }) {
+/** ไอคอนของเมนู/Card: รูปภาพ → ไอคอนจากชุดบนพื้นสี → emoji บนพื้นอ่อน → ตัวอักษรแรกบนพื้นสี */
+export function MenuIcon({
+  emoji,
+  glyph = "",
+  icon,
+  color,
+  name,
+  size = 48,
+}: {
+  emoji: string;
+  glyph?: string;
+  icon?: IconValue;
+  color: string;
+  name: string;
+  size?: number;
+}) {
   const box = { width: size, height: size };
   const imgClass = "flex-none rounded-xl object-contain";
   if (icon instanceof Blob) return <BlobImage blob={icon} className={imgClass} style={box} />;
   if (icon) return <img src={icon.url} alt="" className={imgClass} style={box} />;
+  const useGlyph = !emoji && GLYPHS[glyph];
   return (
     <div
       className="grid flex-none place-items-center rounded-xl font-bold text-white"
@@ -199,7 +226,7 @@ export function MenuIcon({ emoji, icon, color, name, size = 48 }: { emoji: strin
         background: emoji ? `color-mix(in srgb, ${color} 14%, transparent)` : color,
       }}
     >
-      {emoji || name.trim().charAt(0).toUpperCase() || "•"}
+      {useGlyph ? <Glyph name={glyph} className="size-[55%]" /> : emoji || name.trim().charAt(0).toUpperCase() || "•"}
     </div>
   );
 }

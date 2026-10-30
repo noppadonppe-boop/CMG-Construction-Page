@@ -10,7 +10,7 @@ import { useMenus } from "@/lib/db/menus";
 import { useProjects } from "@/lib/db/projects";
 import { rememberLastProject, switchProjectHref, useCurrentProjectId } from "@/lib/project-context";
 import { Avatar } from "./avatar";
-import { MenuIcon } from "./icon-pickers";
+import { SideMenuIcon } from "./side-menu-icon";
 import { ProfileMenu } from "./profile-menu";
 
 const icons = {
@@ -23,7 +23,7 @@ const icons = {
   progress: "M3 17l6-6 4 4 8-8M14 7h7v7",
   settings: "M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6",
   back: "M19 12H5M12 19l-7-7 7-7",
-  plus: "M12 5v14M5 12h14",
+  cards: "M12 2 2 7l10 5 10-5zM2 17l10 5 10-5M2 12l10 5 10-5",
   forms: "M9 3h6a1 1 0 0 1 1 1v1H8V4a1 1 0 0 1 1-1zM8 5H6a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M8 12h8M8 16h5",
   users: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8",
 };
@@ -147,13 +147,7 @@ function Nav({ pathname, projectId, onNavigate }: { pathname: string | null; pro
             <div className="px-2.5 pt-3.5 pb-1 text-[11px] tracking-wider uppercase opacity-55">เมนูเพิ่มเติม</div>
             {menus.map((m) => (
               <Link key={m.id} href={`/m/${m.id}`} onClick={onNavigate} className={navClass(isActive({ href: `/m/${m.id}` }))}>
-                {m.icon ? (
-                  <MenuIcon emoji="" icon={m.icon} color={m.color} name={m.name} size={18} />
-                ) : (
-                  <span className="grid size-[18px] flex-none place-items-center text-[15px] leading-none">
-                    {m.emoji || <i className="size-2.5 rounded-full" style={{ background: m.color }} />}
-                  </span>
-                )}
+                <SideMenuIcon menu={m} />
                 <span className="truncate">{m.name}</span>
               </Link>
             ))}
@@ -161,13 +155,13 @@ function Nav({ pathname, projectId, onNavigate }: { pathname: string | null; pro
         )}
       </div>
 
-      {/* มุมซ้ายล่าง: หน้าจัดการเมนู + จัดการผู้ใช้ — เห็นเฉพาะผู้มีสิทธิ์ */}
+      {/* มุมซ้ายล่าง: จัดการ Cards + จัดการผู้ใช้ — เห็นเฉพาะผู้มีสิทธิ์ */}
       {(can("menu.manage") || can("user.manage")) && (
         <div className="mt-auto flex flex-col gap-1 border-t border-white/10 pt-3">
           {can("menu.manage") && (
             <Link href="/menus" onClick={onNavigate} className={navClass(isActive({ href: "/menus" }))}>
-              <Icon d={icons.plus} />
-              เพิ่ม / จัดการเมนู
+              <Icon d={icons.cards} />
+              จัดการ Cards
             </Link>
           )}
           {can("user.manage") && (
