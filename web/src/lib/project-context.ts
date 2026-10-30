@@ -1,6 +1,7 @@
 "use client";
 
-import { usePathname, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import { useActualPathname } from "./static-export";
 
 // หน้าที่มี id โครงการอยู่ใน path — /projects/{id}, /daily-reports/{id}/..., /issues/{id}/..., /documents/{id}/...
 const SCOPED_PATH = /^\/(?:projects|daily-reports|issues|documents)\/([^/]+)/;
@@ -8,7 +9,7 @@ const LAST_PROJECT_KEY = "cmg:lastProject";
 
 /** โครงการที่ผู้ใช้กำลังทำงานอยู่ อ่านจาก URL (path หรือ ?project=) — null = อยู่นอก workspace ของโครงการ */
 export function useCurrentProjectId(): string | null {
-  const pathname = usePathname();
+  const pathname = useActualPathname();
   const params = useSearchParams();
   const match = pathname.match(SCOPED_PATH);
   if (match && match[1] !== "new") return decodeURIComponent(match[1]);

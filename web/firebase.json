@@ -10,7 +10,85 @@
     {
       "backendId": "cmg-project-hub",
       "rootDir": "/",
-      "ignore": ["node_modules", ".git", ".next", "firebase-debug.log", "firebase-debug.*.log", "*.tsbuildinfo"]
+      "ignore": [
+        "node_modules",
+        ".git",
+        ".next",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.tsbuildinfo"
+      ]
     }
-  ]
+  ],
+  "hosting": {
+    "site": "cmg-construction-page",
+    "public": "out",
+    "cleanUrls": true,
+    "trailingSlash": false,
+    "redirects": [
+      {
+        "source": "/dashboard",
+        "destination": "/",
+        "type": 302
+      }
+    ],
+    "rewrites": [
+      {
+        "source": "/daily-reports/*/*/edit",
+        "destination": "/daily-reports/_/_/edit.html"
+      },
+      {
+        "source": "/daily-reports/*/*",
+        "destination": "/daily-reports/_/_.html"
+      },
+      {
+        "source": "/documents/*/*",
+        "destination": "/documents/_/_.html"
+      },
+      {
+        "source": "/issues/*/*",
+        "destination": "/issues/_/_.html"
+      },
+      {
+        "source": "/m/*",
+        "destination": "/m/_.html"
+      },
+      {
+        "source": "/projects/*/edit",
+        "destination": "/projects/_/edit.html"
+      },
+      {
+        "source": "/projects/*/progress",
+        "destination": "/projects/_/progress.html"
+      },
+      {
+        "source": "/projects/*/report-settings",
+        "destination": "/projects/_/report-settings.html"
+      },
+      {
+        "source": "/projects/*",
+        "destination": "/projects/_.html"
+      }
+    ],
+    "headers": [
+      {
+        "source": "/_next/static/**",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=31536000, immutable"
+          }
+        ]
+      },
+      {
+        "source": "**/*.@(html|txt)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
+      }
+    ]
+  }
 }

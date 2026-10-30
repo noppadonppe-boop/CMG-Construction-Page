@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useRouteParams } from "@/lib/static-export";
 import { useIssues } from "@/lib/db/issues";
 import { useProjects } from "@/lib/db/projects";
 import {
@@ -28,7 +28,7 @@ export default function IssuePage() {
 }
 
 function Detail() {
-  const { projectId, id } = useParams<{ projectId: string; id: string }>();
+  const { projectId, id } = useRouteParams<{ projectId: string; id: string }>("/issues/[projectId]/[id]");
   const { byId, loading: loadingProjects } = useProjects();
   const project = byId.get(projectId);
   const { issues, loading } = useIssues(project ? [project] : []);

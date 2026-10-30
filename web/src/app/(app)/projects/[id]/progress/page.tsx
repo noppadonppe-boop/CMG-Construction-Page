@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useRouteParams } from "@/lib/static-export";
 import { useProjects } from "@/lib/db/projects";
 import { todayInBangkok } from "@/lib/format";
 import { EmptyState, PageHeader, Skeleton } from "@/components/ui";
@@ -8,7 +8,7 @@ import { Guard } from "@/components/guard";
 import { ProgressForm } from "./progress-form";
 
 export default function ProgressPage() {
-  const { id } = useParams<{ id: string }>();
+  const { id } = useRouteParams<{ id: string }>("/projects/[id]/progress");
   const { byId, loading } = useProjects();
   const project = byId.get(id);
 

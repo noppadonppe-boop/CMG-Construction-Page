@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element -- รูปจาก Firebase Storage URL */
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useRouteParams } from "@/lib/static-export";
 import { useState, type ReactNode } from "react";
 import { displayName, useAuth } from "@/lib/auth/context";
 import {
@@ -44,7 +44,7 @@ export default function DcrViewPage() {
 }
 
 function DcrView() {
-  const { projectId, date } = useParams<{ projectId: string; date: string }>();
+  const { projectId, date } = useRouteParams<{ projectId: string; date: string }>("/daily-reports/[projectId]/[date]");
   const { can, userProfile } = useAuth();
   const { byId, loading } = useProjects();
   const project = byId.get(projectId);

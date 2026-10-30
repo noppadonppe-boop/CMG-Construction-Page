@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useRouteParams } from "@/lib/static-export";
 import { useAuth } from "@/lib/auth/context";
 import { useDocuments } from "@/lib/db/documents";
 import { useProjects } from "@/lib/db/projects";
@@ -19,7 +19,7 @@ export default function DocumentPage() {
 }
 
 function Detail() {
-  const { projectId, id } = useParams<{ projectId: string; id: string }>();
+  const { projectId, id } = useRouteParams<{ projectId: string; id: string }>("/documents/[projectId]/[id]");
   const { can } = useAuth();
   const { byId, loading: loadingProjects } = useProjects();
   const project = byId.get(projectId);

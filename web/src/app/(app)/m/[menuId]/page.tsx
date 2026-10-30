@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useRouteParams } from "@/lib/static-export";
 import { useAuth } from "@/lib/auth/context";
 import { useMenus } from "@/lib/db/menus";
 import { EmptyState, PageHeader, Skeleton } from "@/components/ui";
@@ -9,7 +9,7 @@ import { LinkCard } from "../../menus/link-card";
 
 /** หน้าแสดงเมนูสำหรับผู้ใช้ทั่วไป — การเพิ่ม/ลบ/แก้ ทำที่หน้า "จัดการ Cards" (/menus) */
 export default function CustomMenuPage() {
-  const { menuId } = useParams<{ menuId: string }>();
+  const { menuId } = useRouteParams<{ menuId: string }>("/m/[menuId]");
   const { can } = useAuth();
   const { menus, loading, error } = useMenus();
   const menu = menus.find((m) => m.id === menuId);

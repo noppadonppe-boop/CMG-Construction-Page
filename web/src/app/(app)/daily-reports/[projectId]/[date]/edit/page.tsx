@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useRouteParams } from "@/lib/static-export";
 import { useState } from "react";
 import { useDcr, useDcrSettings, type DcrRecord } from "@/lib/db/dcr";
 import { dailyReportStandardSnapshot, projectDailyReportStandard, useFormStandards } from "@/lib/db/form-standards";
@@ -12,7 +12,7 @@ import { Guard } from "@/components/guard";
 import { DcrForm } from "./dcr-form";
 
 export default function EditDcrPage() {
-  const { projectId, date } = useParams<{ projectId: string; date: string }>();
+  const { projectId, date } = useRouteParams<{ projectId: string; date: string }>("/daily-reports/[projectId]/[date]/edit");
   const { byId, loading } = useProjects();
   const project = byId.get(projectId);
   const { forms, loading: loadingStandards } = useFormStandards();

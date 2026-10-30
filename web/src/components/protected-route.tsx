@@ -1,6 +1,7 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useActualPathname } from "@/lib/static-export";
 import { useEffect, useState, type ReactNode } from "react";
 import { useAuth } from "@/lib/auth/context";
 import type { UserRole } from "@/lib/auth/roles";
@@ -49,7 +50,7 @@ export function ProtectedRoute({
 }) {
   const state = useAuth();
   const router = useRouter();
-  const pathname = usePathname();
+  const pathname = useActualPathname();
   const search = useSearchParams();
   const next = pathname + (search.size ? `?${search}` : "");
   const decision = decide(state, requireApproved, requireRoles, next);

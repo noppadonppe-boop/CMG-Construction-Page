@@ -24,6 +24,20 @@ npm run dev
 >
 > Storage Rules อยู่ใน `firebase/storage.rules` — ผู้ใช้ที่ล็อกอินอ่าน/เขียนไฟล์ใต้ `Cmg-Cons-Page-Claude/root/**` ได้ ยกเว้นไอคอนเมนู (`menus/icons`) ที่อัปโหลดได้เฉพาะ MasterAdmin/Admin · deploy ด้วย `firebase deploy --only storage` · ถ้าสร้างฐานข้อมูลแบบ **test mode** Rules จะหมดอายุใน 30 วัน
 
+## Deploy (web.app)
+
+แอปจริงอยู่ที่ https://cmg-construction-page.web.app — build เป็นไฟล์ static แล้วอัปโหลดขึ้น Firebase Hosting (ในโฟลเดอร์ `web`):
+
+```bash
+npm run build:static
+firebase deploy --only hosting
+```
+
+- `build:static` ตั้ง `STATIC_EXPORT=1` → `next build` ส่งออกไฟล์ไปที่ `out/` (ปิด cacheComponents เฉพาะตอนนี้ เพราะ static export ใช้ไม่ได้)
+- หน้าที่มี id ใน URL (`/projects/{id}`, `/m/{id}`, ...) build ไว้หน้าเดียวที่ id `_` แล้ว `firebase.json` rewrite ทุก id มาที่หน้านั้น — หน้าอ่าน id จริงด้วย `useRouteParams` / `useActualPathname` (`src/lib/static-export.ts`)
+- ถ้าเพิ่มหน้าที่มี id ใหม่: ใส่ `generateStaticParams` ที่ layout ของ segment นั้น, ใช้ `useRouteParams` แทน `useParams` และเพิ่ม rewrite ใน `firebase.json`
+- ทดสอบก่อนขึ้นจริงได้ด้วย `firebase hosting:channel:deploy <ชื่อ>` (ได้ลิงก์ทดสอบชั่วคราว)
+
 ## ระบบผู้ใช้
 
 | หัวข้อ | การทำงาน |

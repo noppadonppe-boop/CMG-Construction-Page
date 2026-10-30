@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useRouteParams } from "@/lib/static-export";
 import { useRef, useState } from "react";
 import { useAuth } from "@/lib/auth/context";
 import { ConflictError, DataError } from "@/lib/db/common";
@@ -17,7 +17,7 @@ import { ConflictNotice } from "@/components/conflict-notice";
 import { DeleteProjectButton } from "../../delete-project-button";
 
 export default function ReportSettingsPage() {
-  const { id } = useParams<{ id: string }>();
+  const { id } = useRouteParams<{ id: string }>("/projects/[id]/report-settings");
   const { byId, loading } = useProjects();
   const project = byId.get(id);
   const { can } = useAuth();

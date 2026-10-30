@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
+import { useActualPathname } from "@/lib/static-export";
 import { Suspense, useEffect, useState, type ReactNode } from "react";
 import { displayName, useAuth } from "@/lib/auth/context";
 import { ROLE_LABEL, type Permission } from "@/lib/auth/roles";
@@ -86,7 +87,7 @@ function Icon({ d }: { d: string }) {
 }
 
 function ActiveNav({ onNavigate }: { onNavigate: () => void }) {
-  const pathname = usePathname();
+  const pathname = useActualPathname();
   const projectId = useCurrentProjectId();
   return <Nav pathname={pathname} projectId={projectId} onNavigate={onNavigate} />;
 }
@@ -209,7 +210,7 @@ function ProfileCard() {
 /** แถบบนเมื่ออยู่ในโครงการ: กลับหน้ารวม + สลับโครงการโดยอยู่หมวดเดิม */
 function ProjectBar() {
   const router = useRouter();
-  const pathname = usePathname();
+  const pathname = useActualPathname();
   const projectId = useCurrentProjectId();
   const { byId, projects } = useProjects();
   const allHref = useAllProjectsHref();

@@ -1,13 +1,13 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useRouteParams } from "@/lib/static-export";
 import { useProjects } from "@/lib/db/projects";
 import { EmptyState, PageHeader, Skeleton } from "@/components/ui";
 import { Guard } from "@/components/guard";
 import { ProjectForm } from "../../project-form";
 
 export default function EditProjectPage() {
-  const { id } = useParams<{ id: string }>();
+  const { id } = useRouteParams<{ id: string }>("/projects/[id]/edit");
   const { byId, loading } = useProjects();
   const project = byId.get(id);
 

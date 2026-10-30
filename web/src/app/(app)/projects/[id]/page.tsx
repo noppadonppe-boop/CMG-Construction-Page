@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useRouteParams } from "@/lib/static-export";
 import { useAuth } from "@/lib/auth/context";
 import { useDailyReports } from "@/lib/db/daily";
 import { useProjects } from "@/lib/db/projects";
@@ -22,7 +22,7 @@ function timeline(startDate: string, endDate: string) {
 }
 
 export default function ProjectPage() {
-  const { id } = useParams<{ id: string }>();
+  const { id } = useRouteParams<{ id: string }>("/projects/[id]");
   const { byId, loading } = useProjects();
   const { can } = useAuth();
   const project = byId.get(id);
