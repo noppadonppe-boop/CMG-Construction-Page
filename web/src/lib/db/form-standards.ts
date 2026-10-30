@@ -2,7 +2,13 @@
 
 import { deleteDoc, doc, onSnapshot, serverTimestamp, setDoc, updateDoc, type DocumentSnapshot } from "firebase/firestore";
 import { useEffect, useState } from "react";
-import { DAILY_REPORT_TEMPLATE_KEY, type DailyReportStandardSnapshot } from "../daily-report-standard";
+import {
+  normalizeDailySections,
+  normalizeDailyTemplate,
+  type DailyReportStandardSnapshot,
+  type DailyReportTemplate,
+  type DailySection,
+} from "../daily-report-standard";
 import { normalizeDigitalFormSchema, type DigitalFormSchema } from "../form-schema";
 import { safeFileName } from "../document-files";
 import { deleteFiles, toIso, uploadFile, type StoredFile } from "./common";
@@ -47,12 +53,14 @@ export interface FormStandard {
   /** โครงสร้างฟอร์มดิจิทัลที่ออกแบบเอง (เฉพาะ kind = custom) */
   schema: DigitalFormSchema | null;
   /** รหัส layout ของฟอร์มรายงานประจำวัน (เก็บเฉพาะ kind = daily_report) */
-  daily_template: typeof DAILY_REPORT_TEMPLATE_KEY | null;
+  daily_template: DailyReportTemplate | null;
+  /** หัวข้อรายงานประจำวันที่เปิดใช้ (null = ทุกหัวข้อ, เฉพาะ kind = daily_report) */
+  daily_sections: DailySection[] | null;
   updated_at: string;
   updated_by: string | null;
 }
 
-export type FormStandardInput = Pick<FormStandard, "code" | "name" | "category" | "description" | "rev" | "link" | "kind" | "schema">;
+export type FormStandardInput = Pick<FormStandard, "code" | "name" | "category" | "description" | "rev" | "link" | "kind" | "schema" | "daily_template" | "daily_sections">;
 
 function toFormStandard(snap: DocumentSnapshot): FormStandard {
   const d = snap.data() ?? {};
@@ -67,7 +75,8 @@ function toFormStandard(snap: DocumentSnapshot): FormStandard {
     link: d.link ?? "",
     kind: d.kind === "daily_report" ? "daily_report" : d.kind === "custom" ? "custom" : "document",
     schema: d.kind === "custom" ? normalizeDigitalFormSchema(d.schema) : null,
-    daily_template: d.kind === "daily_report" && d.daily_template === DAILY_REPORT_TEMPLATE_KEY ? DAILY_REPORT_TEMPLATE_KEY : null,
+    daily_template: d.kind === "daily_report" ? normalizeDailyTemplate(d.daily_template) : null,
+    daily_sections: d.kind === "daily_report" ? normalizeDailySections(d.daily_sections) : null,
     updated_at: toIso(d.updated_at),
     updated_by: d.updated_by ?? null,
   };
@@ -76,8 +85,8 @@ function toFormStandard(snap: DocumentSnapshot): FormStandard {
 /** ตรวจว่าแบบฟอร์มนี้เป็นมาตรฐาน DCR แบบกรอกในระบบ */
 export function isDailyReportStandard(
   form: FormStandard,
-): form is FormStandard & { kind: "daily_report"; daily_template: typeof DAILY_REPORT_TEMPLATE_KEY } {
-  return form.kind === "daily_report" && form.daily_template === DAILY_REPORT_TEMPLATE_KEY;
+): form is FormStandard & { kind: "daily_report"; daily_template: DailyReportTemplate } {
+  return form.kind === "daily_report" && form.daily_template !== null;
 }
 
 /** แบบฟอร์มดิจิทัลที่ผู้ดูแลออกแบบเองจากตัวสร้างแบบฟอร์ม */
@@ -95,18 +104,20 @@ export function projectDailyReportStandard(forms: FormStandard[], ids: string[])
 /** ข้อมูลมาตรฐานที่ฝังไว้กับรายงาน เพื่อให้รายงานเก่าไม่เปลี่ยนตามการแก้ไขมาตรฐานภายหลัง */
 export function dailyReportStandardSnapshot(form: FormStandard | null): DailyReportStandardSnapshot | null {
   if (!form || !isDailyReportStandard(form)) return null;
-  return { id: form.id, code: form.code, name: form.name, rev: form.rev, template: form.daily_template };
+  return { id: form.id, code: form.code, name: form.name, rev: form.rev, template: form.daily_template, sections: form.daily_sections };
 }
 
 const DAILY_REPORT_STANDARD_INPUT: FormStandardInput = {
   code: "DCR-STD-001",
   name: "มาตรฐานรายงานประจำวันงานก่อสร้าง",
   category: "construction",
-  description: "รายงานประจำวันมาตรฐาน: โครงการ สภาพอากาศ กำลังคน เครื่องจักร/วัสดุ ความคืบหน้า ความปลอดภัย ปัญหา แผนพรุ่งนี้ และการลงนาม",
+  description: "รายงานประจำวันรูปแบบ CMG1: โครงการ สภาพอากาศ กำลังคน/เครื่องจักร งานวันนี้ ปัญหา แผนพรุ่งนี้ และเอกสารแนบ",
   rev: "1",
   link: "",
   kind: "daily_report",
   schema: null,
+  daily_template: "cmg1",
+  daily_sections: null,
 };
 
 /** เพิ่มมาตรฐานรายงานประจำวันเข้าคลัง — ผู้ดูแลเรียกจากปุ่มในหน้าแบบฟอร์มเท่านั้น */
@@ -114,9 +125,6 @@ export async function createDailyReportStandard(actor: string) {
   const ref = doc(formStandardsCol());
   await setDoc(ref, {
     ...DAILY_REPORT_STANDARD_INPUT,
-    kind: "daily_report",
-    daily_template: DAILY_REPORT_TEMPLATE_KEY,
-    schema: null,
     file: null,
     created_at: serverTimestamp(),
     created_by: actor,
@@ -185,7 +193,8 @@ export async function saveFormStandard(
       formStandardRef(id),
       {
         ...input,
-        daily_template: input.kind === "daily_report" ? (existing?.daily_template ?? null) : null,
+        daily_template: input.kind === "daily_report" ? input.daily_template : null,
+        daily_sections: input.kind === "daily_report" ? input.daily_sections : null,
         file: nextFile,
         ...(existing ? {} : { created_at: serverTimestamp(), created_by: actor }),
         updated_at: serverTimestamp(),

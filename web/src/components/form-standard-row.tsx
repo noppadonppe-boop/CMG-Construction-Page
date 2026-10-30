@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { DAILY_REPORT_TEMPLATES } from "@/lib/daily-report-standard";
 import { formHref, isCustomDigitalStandard, isDailyReportStandard, type FormStandard } from "@/lib/db/form-standards";
 
 /** แถวแบบฟอร์ม 1 รายการ: เลขที่ ชื่อ Rev. และปุ่มเปิดไฟล์/ลิงก์ — ใช้ทั้งในคลังกลางและหน้าโครงการ */
@@ -13,7 +14,7 @@ export function FormStandardRow({ form, meta, actions }: { form: FormStandard; m
           {form.code && <span className="font-mono text-xs text-muted">{form.code}</span>}
           <span className="font-medium">{form.name}</span>
           {form.rev && <span className="rounded bg-surface-2 px-1.5 text-[11px] text-muted">Rev. {form.rev}</span>}
-          {(isDigitalDailyReport || isCustomDigital) && <span className="rounded bg-primary-soft px-1.5 text-[11px] text-primary">{isDigitalDailyReport ? "ฟอร์มในระบบ" : "แบบฟอร์มดิจิทัล"}</span>}
+          {(isDigitalDailyReport || isCustomDigital) && <span className="rounded bg-primary-soft px-1.5 text-[11px] text-primary">{isDigitalDailyReport ? DAILY_REPORT_TEMPLATES[form.daily_template].label : "แบบฟอร์มดิจิทัล"}</span>}
         </div>
         {form.description && <p className="truncate text-xs text-muted">{form.description}</p>}
         {isCustomDigital && <p className="text-xs text-muted">{form.schema.sections.length} หมวด · {form.schema.sections.reduce((sum, section) => sum + section.fields.length, 0)} ฟิลด์ · ออกแบบในระบบ</p>}

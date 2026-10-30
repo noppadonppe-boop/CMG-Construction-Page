@@ -9,6 +9,7 @@ import { formatDate, formatMillions, formatPct, scheduleStatus, weatherLabel } f
 import { EmptyState, KpiCard, PageHeader, Pill, Skeleton } from "@/components/ui";
 import { SCurve } from "@/components/s-curve";
 import { PhotoGallery } from "@/components/photo-gallery";
+import { dailyReportHref } from "@/lib/project-context";
 import { ProjectForms } from "./project-forms";
 
 const DAY = 86_400_000;
@@ -47,7 +48,7 @@ export default function ProjectPage() {
         subtitle={`ผู้จัดการ: ${project.manager_name ?? "-"} · สัญญา ${formatDate(project.start_date)} – ${formatDate(project.end_date)} · มูลค่า ${formatMillions(project.contract_value)}`}
         actions={
           can("daily.create") && (
-            <Link href={`/daily-reports/new?project=${project.id}`} className="btn btn-primary">
+            <Link href={dailyReportHref(project.id)} className="btn btn-primary">
               + รายงานประจำวัน
             </Link>
           )

@@ -1,7 +1,7 @@
 "use client";
 
 import type { QueryDocumentSnapshot } from "firebase/firestore";
-import { manpowerTotals, reportCode, summarizeWeather, type DcrData, type Photo } from "../dcr";
+import { manpowerTotals, normalizeDcrRows, reportDocNo, summarizeWeather, type DcrData, type Photo } from "../dcr";
 import type { DailyReport } from "../types";
 import type { StoredFile } from "./common";
 import type { ProjectRecord } from "./projects";
@@ -14,7 +14,7 @@ function toReport(snap: QueryDocumentSnapshot, project: ProjectRecord): DailyRep
   const d = snap.data();
   const base = { id: snap.id, project_id: project.id, project_name: project.name, report_date: d.report_date ?? snap.id };
   if (d.schema === 2) {
-    const r = d as DcrData;
+    const r = normalizeDcrRows(d as DcrData);
     return {
       ...base,
       weather: summarizeWeather(r.weather),
@@ -23,7 +23,7 @@ function toReport(snap: QueryDocumentSnapshot, project: ProjectRecord): DailyRep
       equipment: r.equipment.map((e) => e.name),
       issues: r.issues.map((i) => i.description).join(" · ") || null,
       photos: r.progress.flatMap((p) => p.photos.map((ph: Photo) => ph.url)),
-      code: reportCode(project.code, r.report_no),
+      code: reportDocNo(r, project.code),
       status: r.status,
       lost_hours: r.weather.lost_hours,
     };

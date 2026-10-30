@@ -6,11 +6,13 @@ import { useRouter } from "next/navigation";
 import { useRef, useState, type FormEvent } from "react";
 import { useAuth } from "@/lib/auth/context";
 import { ConflictError, DataError } from "@/lib/db/common";
+import { setProjectFormStandards, useFormStandards } from "@/lib/db/form-standards";
 import { createProject, updateProject, useProjects, type ProjectRecord } from "@/lib/db/projects";
 import { firebaseErrorMessage } from "@/lib/firebase/errors";
 import { statusLabel } from "@/lib/format";
 import { parseProjectForm, STATUSES } from "@/lib/project-input";
 import { ConflictNotice } from "@/components/conflict-notice";
+import { FormStandardsField } from "./form-standards-field";
 
 /**
  * สร้าง/แก้ไขโครงการ
@@ -27,6 +29,8 @@ export function ProjectForm({ project: initial }: { project?: ProjectRecord }) {
   const [error, setError] = useState<string>();
   const [conflict, setConflict] = useState<string | null>(null);
   const [pending, startTransition] = useSubmitOnce();
+  const { forms, loading: loadingForms } = useFormStandards();
+  const [chosenForms, setChosenForms] = useState(() => new Set(initial?.form_standards ?? []));
 
   const live = project ? byId.get(project.id) : undefined;
   const remoteChange = project && live && live.version !== project.version ? { by: live.updated_by } : null;
@@ -42,6 +46,12 @@ export function ProjectForm({ project: initial }: { project?: ProjectRecord }) {
         const id = project
           ? (await updateProject(project.id, parsed.data, project.version, userProfile.email, force), project.id)
           : await createProject(parsed.data, userProfile.email);
+        // แบบฟอร์มที่ถูกลบออกจากคลังแล้วตัดทิ้ง · บันทึกเฉพาะเมื่อชุดที่เลือกเปลี่ยนจากตอนเปิดฟอร์ม
+        if (!loadingForms) {
+          const ids = forms.filter((f) => chosenForms.has(f.id)).map((f) => f.id);
+          const before = forms.filter((f) => project?.form_standards.includes(f.id)).map((f) => f.id);
+          if (ids.length !== before.length || ids.some((x) => !before.includes(x))) await setProjectFormStandards(id, ids, userProfile.email);
+        }
         router.push(`/projects/${id}`);
       } catch (e) {
         if (e instanceof ConflictError) setConflict(e.message);
@@ -58,6 +68,7 @@ export function ProjectForm({ project: initial }: { project?: ProjectRecord }) {
   function reloadLatest() {
     if (!live) return;
     setProject(live);
+    setChosenForms(new Set(live.form_standards));
     setConflict(null);
     setFormKey((k) => k + 1);
   }
@@ -125,6 +136,7 @@ export function ProjectForm({ project: initial }: { project?: ProjectRecord }) {
           ถ้าเปลี่ยนวันที่สัญญา ให้ตรวจแผนความคืบหน้ารายเดือนอีกครั้ง
         </p>
       )}
+      <FormStandardsField forms={forms} loading={loadingForms} chosen={chosenForms} onChange={setChosenForms} />
       {error && <p className="rounded-lg bg-bad-soft px-3 py-2 text-bad sm:col-span-2">{error}</p>}
 
       <div className="flex justify-end gap-2 sm:col-span-2">

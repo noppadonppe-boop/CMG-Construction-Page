@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth/context";
 import { useDailyReports } from "@/lib/db/daily";
 import { DCR_STATUS_LABEL } from "@/lib/dcr";
 import { useProjects } from "@/lib/db/projects";
+import { dailyReportHref } from "@/lib/project-context";
 import { Guard, NoProjects } from "@/components/guard";
 import { formatDate, weatherLabel } from "@/lib/format";
 import { EmptyState, PageHeader, Pill, Skeleton } from "@/components/ui";
@@ -21,7 +22,7 @@ export default function DailyReportsPage() {
         subtitle={`บันทึกงานหน้างานรายวัน${projectId ? "ของโครงการนี้" : "ของโครงการที่คุณได้รับมอบหมาย"} · อัปเดตอัตโนมัติ`}
         actions={
           can("daily.create") && (
-            <Link href={`/daily-reports/new${projectId ? `?project=${projectId}` : ""}`} className="btn btn-primary">+ เขียนรายงาน</Link>
+            <Link href={projectId ? dailyReportHref(projectId) : "/daily-reports/new"} className="btn btn-primary">+ เขียนรายงาน</Link>
           )
         }
       />

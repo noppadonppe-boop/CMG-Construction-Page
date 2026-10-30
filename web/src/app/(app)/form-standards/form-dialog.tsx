@@ -5,13 +5,20 @@ import { useAuth } from "@/lib/auth/context";
 import {
   FORM_CATEGORIES,
   FORM_CATEGORY_KEYS,
-  isDailyReportStandard,
   newFormStandardId,
   saveFormStandard,
   type FormStandard,
   type FormStandardInput,
 } from "@/lib/db/form-standards";
 import { blankDigitalFormSchema } from "@/lib/form-schema";
+import {
+  DAILY_REPORT_STANDARD_SECTIONS,
+  DAILY_REPORT_TEMPLATE_KEYS,
+  DAILY_REPORT_TEMPLATES,
+  OPTIONAL_DAILY_SECTIONS,
+  sectionLetters,
+  type DailySection,
+} from "@/lib/daily-report-standard";
 import { firebaseErrorMessage } from "@/lib/firebase/errors";
 import { formatFileSize } from "@/lib/format";
 import { CustomFormBuilder } from "@/components/custom-form-builder";
@@ -24,7 +31,7 @@ export function FormStandardDialog({ form, onClose }: { form?: FormStandard; onC
   // id ของแบบฟอร์มใหม่สร้างครั้งเดียว — ไฟล์จะอยู่ในโฟลเดอร์ของ id นี้
   const [id] = useState(() => form?.id ?? newFormStandardId());
   const [v, setV] = useState<FormStandardInput>(() =>
-    form ?? { code: "", name: "", category: "general", description: "", rev: "0", link: "", kind: "document", schema: null },
+    form ?? { code: "", name: "", category: "general", description: "", rev: "0", link: "", kind: "document", schema: null, daily_template: null, daily_sections: null },
   );
   const set = (patch: Partial<FormStandardInput>) => setV((prev) => ({ ...prev, ...patch }));
   const { file, setFile, progress, setProgress } = useDocumentFile();
@@ -32,8 +39,16 @@ export function FormStandardDialog({ form, onClose }: { form?: FormStandard; onC
   const [error, setError] = useState<string>();
   const [pending, startTransition] = useTransition();
   const keepsFile = Boolean(form?.file && !removeFile);
-  const isDigitalDailyReport = Boolean(form && isDailyReportStandard(form));
   const isCustomDigital = v.kind === "custom";
+  const isDaily = v.kind === "daily_report";
+  const enabledSections: readonly string[] = v.daily_sections ?? OPTIONAL_DAILY_SECTIONS;
+  const letters = sectionLetters(v.daily_sections);
+  const toggleSection = (key: DailySection) => {
+    const current = v.daily_sections ?? OPTIONAL_DAILY_SECTIONS;
+    const next = current.includes(key) ? current.filter((k) => k !== key) : OPTIONAL_DAILY_SECTIONS.filter((k) => k === key || current.includes(k));
+    // เปิดครบทุกหัวข้อ = null (ตามมาตรฐานเต็ม)
+    set({ daily_sections: next.length === OPTIONAL_DAILY_SECTIONS.length ? null : next });
+  };
 
   useEffect(() => {
     if (!dialogRef.current?.open) dialogRef.current?.showModal();
@@ -47,9 +62,10 @@ export function FormStandardDialog({ form, onClose }: { form?: FormStandard; onC
       name: v.name.trim(),
       description: v.description.trim(),
       rev: v.rev.trim(),
-      link: isCustomDigital ? "" : v.link.trim(),
-      kind: isDigitalDailyReport ? "daily_report" : v.kind,
+      link: v.kind === "document" ? v.link.trim() : "",
       schema: isCustomDigital ? v.schema : null,
+      daily_template: isDaily ? (v.daily_template ?? DAILY_REPORT_TEMPLATE_KEYS[0]) : null,
+      daily_sections: isDaily ? v.daily_sections : null,
     };
     if (!input.name) return setError("กรุณาใส่ชื่อแบบฟอร์ม");
     if (input.link && !/^https?:\/\//i.test(input.link)) return setError("ลิงก์ต้องขึ้นต้นด้วย http:// หรือ https://");
@@ -117,33 +133,41 @@ export function FormStandardDialog({ form, onClose }: { form?: FormStandard; onC
             <textarea id="fs-desc" className="input" rows={2} value={v.description} onChange={(e) => set({ description: e.target.value })} maxLength={300} />
           </div>
 
-          {isDigitalDailyReport ? (
-            <div className="rounded-lg border border-primary/25 bg-primary-soft px-3 py-3 text-sm text-primary">
-              <b>ฟอร์มในระบบ</b>
-              <p className="mt-1 text-xs">แบบฟอร์มนี้ใช้หน้ารายงานประจำวันของระบบโดยตรง จึงไม่ต้องแนบไฟล์หรือลิงก์ โครงการที่เลือกแบบฟอร์มนี้จะใช้ชื่อและ revision นี้กับรายงานใหม่</p>
+          <div>
+            <div className="label">รูปแบบการใช้งาน</div>
+            <div className="grid gap-2 sm:grid-cols-3">
+              <KindOption checked={v.kind === "document"} onChange={() => set({ kind: "document", schema: null, daily_template: null })} title="เอกสาร / ไฟล์แนบ" detail="อัปโหลด PDF, Excel, Word หรือใช้ลิงก์ภายนอก" />
+              <KindOption checked={v.kind === "custom"} onChange={() => set({ kind: "custom", schema: v.schema ?? blankDigitalFormSchema(), link: "", daily_template: null })} title="ฟอร์มดิจิทัลแบบกำหนดเอง" detail="ออกแบบหมวด ฟิลด์ ตาราง รูปภาพ และลายเซ็นในระบบ" />
+              {DAILY_REPORT_TEMPLATE_KEYS.map((t) => (
+                <KindOption key={t} checked={isDaily && v.daily_template === t} onChange={() => set({ kind: "daily_report", daily_template: t, schema: null, link: "" })} title={DAILY_REPORT_TEMPLATES[t].label} detail={DAILY_REPORT_TEMPLATES[t].detail} />
+              ))}
+            </div>
+          </div>
+
+          {isCustomDigital ? (
+            <CustomFormBuilder schema={v.schema ?? blankDigitalFormSchema()} onChange={(schema) => set({ schema })} />
+          ) : isDaily ? (
+            <div className="rounded-lg border border-primary/25 bg-primary-soft/60 px-3 py-3">
+              <p className="text-xs text-primary">ใช้หน้ารายงานประจำวันของระบบโดยตรง ไม่ต้องแนบไฟล์หรือลิงก์ · เลือกหัวข้อที่ใช้ — หัวข้อที่ปิดจะไม่แสดงในฟอร์มและรายงาน และเรียงตัวอักษรใหม่ให้ต่อเนื่อง</p>
+              <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                {DAILY_REPORT_STANDARD_SECTIONS.map((s) => {
+                  const required = s.key === "project";
+                  const on = required || enabledSections.includes(s.key);
+                  return (
+                    <label key={s.key} className={`flex items-center gap-2 rounded-md border bg-surface px-2 py-1.5 text-xs ${on ? "border-border" : "border-dashed border-border opacity-60"} ${required ? "" : "cursor-pointer"}`}>
+                      <span className={`grid size-5 shrink-0 place-items-center rounded text-[11px] font-bold ${on ? "bg-primary text-white" : "bg-surface-2 text-muted line-through"}`}>{letters[s.key] ?? "–"}</span>
+                      <span className="min-w-0 flex-1">
+                        {s.title}
+                        <span className="block text-[11px] text-muted">{s.en}{required && " · บังคับใช้"}</span>
+                      </span>
+                      <input type="checkbox" role="switch" className="dcr-switch" checked={on} disabled={required} aria-label={`ใช้หัวข้อ ${s.title}`} onChange={() => toggleSection(s.key as DailySection)} />
+                    </label>
+                  );
+                })}
+              </div>
             </div>
           ) : (
             <>
-              <div>
-                <div className="label">รูปแบบการใช้งาน</div>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <label className={`cursor-pointer rounded-lg border px-3 py-2.5 ${v.kind === "document" ? "border-primary bg-primary-soft" : "border-border bg-surface-2"}`}>
-                    <input className="sr-only" type="radio" name="form-kind" checked={v.kind === "document"} onChange={() => set({ kind: "document", schema: null })} />
-                    <span className="block text-sm font-medium">เอกสาร / ไฟล์แนบ</span>
-                    <span className="mt-0.5 block text-xs text-muted">อัปโหลด PDF, Excel, Word หรือใช้ลิงก์ภายนอก</span>
-                  </label>
-                  <label className={`cursor-pointer rounded-lg border px-3 py-2.5 ${v.kind === "custom" ? "border-primary bg-primary-soft" : "border-border bg-surface-2"}`}>
-                    <input className="sr-only" type="radio" name="form-kind" checked={v.kind === "custom"} onChange={() => set({ kind: "custom", schema: v.schema ?? blankDigitalFormSchema(), link: "" })} />
-                    <span className="block text-sm font-medium">ฟอร์มดิจิทัลแบบกำหนดเอง</span>
-                    <span className="mt-0.5 block text-xs text-muted">ออกแบบหมวด ฟิลด์ ตาราง รูปภาพ และลายเซ็นในระบบ</span>
-                  </label>
-                </div>
-              </div>
-
-              {isCustomDigital ? (
-                <CustomFormBuilder schema={v.schema ?? blankDigitalFormSchema()} onChange={(schema) => set({ schema })} />
-              ) : (
-                <>
                   <div>
                     <div className="label">ไฟล์แบบฟอร์ม</div>
                     {keepsFile && !file && (
@@ -164,8 +188,6 @@ export function FormStandardDialog({ form, onClose }: { form?: FormStandard; onC
                     <input id="fs-link" className="input font-mono" value={v.link} onChange={(e) => set({ link: e.target.value })} placeholder="https://drive.google.com/..." inputMode="url" />
                     <p className="mt-1 text-xs text-muted">ถ้ามีทั้งไฟล์และลิงก์ จะเปิดไฟล์ที่อัปโหลดก่อน</p>
                   </div>
-                </>
-              )}
             </>
           )}
 
@@ -178,5 +200,15 @@ export function FormStandardDialog({ form, onClose }: { form?: FormStandard; onC
         </div>
       </form>
     </dialog>
+  );
+}
+
+function KindOption({ checked, onChange, title, detail }: { checked: boolean; onChange: () => void; title: string; detail: string }) {
+  return (
+    <label className={`cursor-pointer rounded-lg border px-3 py-2.5 ${checked ? "border-primary bg-primary-soft" : "border-border bg-surface-2"}`}>
+      <input className="sr-only" type="radio" name="form-kind" checked={checked} onChange={onChange} />
+      <span className="block text-sm font-medium">{title}</span>
+      <span className="mt-0.5 block text-xs text-muted">{detail}</span>
+    </label>
   );
 }

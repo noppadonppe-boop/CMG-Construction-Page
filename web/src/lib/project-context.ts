@@ -1,6 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
+import { todayInBangkok } from "./format";
 import { useActualPathname } from "./static-export";
 
 // หน้าที่มี id โครงการอยู่ใน path — /projects/{id}, /daily-reports/{id}/..., /issues/{id}/..., /documents/{id}/...
@@ -26,6 +27,9 @@ export function switchProjectHref(pathname: string, nextId: string) {
   if (section) return `/${section}?project=${nextId}`;
   return `/projects/${nextId}`;
 }
+
+/** เขียนรายงานประจำวันของโครงการที่เปิดอยู่ — เข้าฟอร์มของวันนี้ทันที (เปลี่ยนวันที่ในฟอร์มได้ · มีรายงานแล้วจะเปิดฉบับเดิม) */
+export const dailyReportHref = (projectId: string) => `/daily-reports/${projectId}/${todayInBangkok()}/edit`;
 
 // เก็บไว้ในเครื่องของผู้ใช้เท่านั้น — ใช้เรียง "เปิดล่าสุด" ในหน้าเลือกโครงการ
 export function rememberLastProject(id: string) {

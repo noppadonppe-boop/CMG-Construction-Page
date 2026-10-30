@@ -143,6 +143,66 @@ body {
   }
 }
 
+/* หัวข้อ H: หน้าเอกสารแนบแบบจัดหน้า — แต่ละหน้าพิมพ์ตามขนาด/แนวของตัวเอง (ขอบ 10 มม. = PAGE_MARGIN_MM) */
+@page dcr-a4-portrait {
+  size: A4 portrait;
+  margin: 10mm;
+}
+@page dcr-a4-landscape {
+  size: A4 landscape;
+  margin: 10mm;
+}
+@page dcr-a3-portrait {
+  size: A3 portrait;
+  margin: 10mm;
+}
+@page dcr-a3-landscape {
+  size: A3 landscape;
+  margin: 10mm;
+}
+.dcr-paper-a4-portrait {
+  page: dcr-a4-portrait;
+}
+.dcr-paper-a4-landscape {
+  page: dcr-a4-landscape;
+}
+.dcr-paper-a3-portrait {
+  page: dcr-a3-portrait;
+}
+.dcr-paper-a3-landscape {
+  page: dcr-a3-landscape;
+}
+/* --pw / --ph = ขนาดพื้นที่พิมพ์ (มม., ไม่มีหน่วย) · --mm = 1 มม. บนกระดาษ ย่อตามความกว้างบนจอ */
+.dcr-hpage-wrap {
+  container-type: inline-size;
+  margin-inline: auto;
+}
+.dcr-hpage {
+  --mm: calc(100cqw / var(--pw));
+  position: relative;
+  width: 100%;
+  background: var(--surface);
+  line-height: 1.35;
+}
+/* เส้นตารางช่วยจัดวางในฟอร์มแก้ไข (ทุก 5%) */
+.dcr-hgrid {
+  background-image: linear-gradient(color-mix(in srgb, var(--text) 7%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--text) 7%, transparent) 1px, transparent 1px);
+  background-size: 5% 5%;
+}
+@media print {
+  .dcr-hpage-wrap {
+    width: calc(var(--pw) * 1mm) !important;
+    margin: 0;
+    break-before: page;
+  }
+  .dcr-hpage {
+    --mm: 1mm;
+    height: calc(var(--ph) * 1mm);
+    aspect-ratio: auto !important;
+  }
+}
+
 /* ตารางในรายงานประจำวัน (Daily construction report) */
 table.dcr {
   width: 100%;
@@ -164,4 +224,150 @@ table.dcr {
 }
 .dcr .num {
   text-align: right;
+}
+
+/* เอกสาร DCR: พิมพ์สีพื้นหัวตาราง/แถบหัวตามจอ */
+.dcr-doc {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.dcr-band {
+  background: linear-gradient(120deg, #0f1b2d 0%, #1b3a6b 100%);
+  color: #fff;
+}
+.dcr thead th {
+  background: color-mix(in srgb, var(--primary) 9%, var(--surface));
+  color: var(--text);
+  font-size: 11px;
+}
+.dcr thead th.dcr-sub {
+  background: var(--primary);
+  color: #fff;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+.dcr-info th {
+  width: 15%;
+  font-size: 11px;
+}
+.dcr tbody tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--surface-2) 70%, transparent);
+}
+.dcr tr.dcr-total td {
+  background: color-mix(in srgb, var(--primary) 9%, var(--surface));
+  font-weight: 700;
+}
+.dcr-letter {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+.dcr-chip {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 0 7px;
+  font-size: 10.5px;
+  font-weight: 600;
+}
+.dcr-chip.ok { background: var(--ok-soft); color: var(--ok); }
+.dcr-chip.warn { background: var(--warn-soft); color: var(--warn); }
+.dcr-chip.bad { background: var(--bad-soft); color: var(--bad); }
+.dcr-tag {
+  display: inline-block;
+  margin-right: 6px;
+  border-radius: 3px;
+  padding: 0 5px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+.dcr-tag.warn { background: var(--warn-soft); color: var(--warn); }
+/* กล่องข้อความแบบบรรทัด */
+.dcr-lines {
+  border: 1px solid color-mix(in srgb, var(--text) 22%, transparent);
+  border-radius: 2px;
+}
+.dcr-lines > li {
+  display: flex;
+  gap: 8px;
+  min-height: 26px;
+  padding: 4px 8px 4px 0;
+  border-bottom: 1px dotted color-mix(in srgb, var(--text) 25%, transparent);
+  break-inside: avoid;
+}
+.dcr-lines > li:last-child { border-bottom: 0; }
+.dcr-n {
+  flex: none;
+  width: 28px;
+  border-right: 1px solid color-mix(in srgb, var(--text) 15%, transparent);
+  text-align: center;
+  color: var(--muted);
+  font-weight: 600;
+}
+/* ช่องกรอกในฟอร์มรายงานประจำวัน */
+.dcr-cell {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  padding: 4px 7px;
+  font-size: 13px;
+  color: inherit;
+}
+.dcr-cell:focus {
+  outline: 2px solid var(--primary-soft);
+  border-color: var(--primary);
+}
+.dcr-cell[type="number"] {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+textarea.dcr-cell {
+  resize: vertical;
+}
+.dcr-edit td {
+  padding: 3px 4px;
+  vertical-align: middle;
+}
+
+/* สวิตช์เปิด/ปิด (checkbox role="switch") */
+.dcr-switch {
+  appearance: none;
+  flex: none;
+  position: relative;
+  width: 34px;
+  height: 19px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 25%, transparent);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.dcr-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #fff;
+  transition: left 0.15s;
+}
+.dcr-switch:checked {
+  background: var(--primary);
+}
+.dcr-switch:checked::after {
+  left: 17px;
+}
+.dcr-switch:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }

@@ -1,5 +1,5 @@
 import type { FormStandard } from "@/lib/db/form-standards";
-import { DAILY_REPORT_STANDARD_SECTIONS } from "@/lib/daily-report-standard";
+import { DAILY_REPORT_STANDARD_SECTIONS, DAILY_REPORT_TEMPLATES } from "@/lib/daily-report-standard";
 
 /** ตัวอย่างมาตรฐาน DCR ที่แสดงในคลังแบบฟอร์มก่อนนำไปใช้กับโครงการ */
 export function DailyReportStandardPreview({
@@ -23,7 +23,7 @@ export function DailyReportStandardPreview({
                 <span className="grid size-9 place-items-center rounded-lg bg-primary text-lg text-white">▤</span>
                 <div>
                   <div className="text-xs font-semibold tracking-wide text-primary uppercase">Digital form standard</div>
-                  <h2 className="font-bold">รายงานประจำวันงานก่อสร้าง</h2>
+                  <h2 className="font-bold">{DAILY_REPORT_TEMPLATES.cmg1.label} · รายงานประจำวันงานก่อสร้าง</h2>
                 </div>
               </div>
               <p className="max-w-2xl text-sm text-muted">ฟอร์มในระบบสำหรับสรุปข้อมูลหน้างานในแต่ละวัน โดยจัดหัวข้อและลำดับการอนุมัติให้เหมือนกันทุกโครงการ</p>
@@ -38,7 +38,7 @@ export function DailyReportStandardPreview({
           <div className="grid gap-2 sm:grid-cols-2">
             {DAILY_REPORT_STANDARD_SECTIONS.map((section) => (
               <div key={section.number} className="flex gap-3 rounded-lg border border-border bg-surface-2 p-3">
-                <span className="mt-0.5 font-mono text-xs font-semibold text-primary">{section.number}</span>
+                <span className="grid size-5 shrink-0 place-items-center rounded bg-primary text-[11px] font-bold text-white">{section.number}</span>
                 <div className="min-w-0">
                   <div className="text-sm font-semibold">{section.title}</div>
                   <p className="mt-0.5 text-xs leading-relaxed text-muted">{section.detail}</p>
@@ -53,7 +53,7 @@ export function DailyReportStandardPreview({
             ) : canManage ? (
               <>
                 <button type="button" className="btn btn-primary" disabled={pending} onClick={onCreate}>{pending ? "กำลังเพิ่มมาตรฐาน..." : "เพิ่มมาตรฐานนี้เข้าคลัง"}</button>
-                <p className="text-xs text-muted">เพิ่มครั้งเดียว แล้วเลือกให้แต่ละโครงการได้จากหน้ารายละเอียดโครงการ</p>
+                <p className="text-xs text-muted">หรือกด “+ เพิ่มแบบฟอร์ม” แล้วเลือก {DAILY_REPORT_TEMPLATES.cmg1.label} เพื่อตั้งเลขที่/Rev. เอง · เลือกให้แต่ละโครงการได้จากหน้ารายละเอียดโครงการ</p>
               </>
             ) : (
               <p className="text-sm text-muted">ผู้ดูแลแบบฟอร์มสามารถเพิ่มมาตรฐานนี้เข้าคลัง แล้วกำหนดให้แต่ละโครงการใช้ได้</p>
@@ -66,21 +66,25 @@ export function DailyReportStandardPreview({
             <div className="flex items-start justify-between border-b-2 border-text pb-2">
               <div>
                 <div className="font-bold">DAILY CONSTRUCTION REPORT</div>
-                <div className="text-muted">มาตรฐานรายงานประจำวัน</div>
+                <div className="text-muted">รายงานประจำวันงานก่อสร้าง</div>
               </div>
-              <div className="text-right text-muted">DCR-STD-001<br />Rev. 1</div>
+              <div className="text-right text-muted">Doc. no.<br />CMG1</div>
             </div>
             <div className="mt-2 grid grid-cols-2 gap-1.5">
-              <MockField label="Project" value="ชื่อโครงการ" />
-              <MockField label="Report date" value="DD / MM / YYYY" />
-              <MockField label="Working hours" value="08:00–17:00" />
-              <MockField label="Weather" value="Clear · 31°C" />
+              <MockField label="A · Project" value="ชื่อโครงการ" />
+              <MockField label="Date" value="DD / MM / YYYY" />
+              <MockField label="Client / Contractor" value="—" />
+              <MockField label="B · Weather" value="Clear · 31°C" />
             </div>
-            <MockTable title="Manpower status" headers={["Trade", "Main", "Sub"]} rows={[["Steel fixer", "12", "4"], ["General worker", "16", "8"]]} />
-            <MockTable title="Daily progress" headers={["Area", "Description", "Today"]} rows={[["Zone B", "Foundation rebar", "24 ea."], ["Zone C", "Concrete pour", "42 m³"]]} />
+            <div className="grid grid-cols-2 gap-1.5">
+              <MockTable title="C · Manpower" headers={["Trade", "Main", "Sub"]} rows={[["Steel fixer", "12", "4"], ["Worker", "16", "8"]]} />
+              <MockTable title="Equipment" headers={["Item", "Hr", "Status"]} rows={[["Crane", "7", "Work"], ["Pump", "3", "Idle"]]} />
+            </div>
+            <MockTable title="D · Today's activities" headers={["Area", "Description", "Today"]} rows={[["Zone B", "Foundation rebar", "24 ea."], ["Zone C", "Concrete pour", "42 m³"]]} />
             <div className="mt-2 grid grid-cols-2 gap-1.5">
-              <div className="rounded border border-border p-1.5"><b>Safety / QC</b><br /><span className="text-muted">Toolbox, inspection, NCR</span></div>
-              <div className="rounded border border-border p-1.5"><b>Tomorrow plan</b><br /><span className="text-muted">Task, crew, resources</span></div>
+              <div className="rounded border border-border p-1.5"><b>E · Problems</b><br /><span className="text-muted">Cause, impact, action</span></div>
+              <div className="rounded border border-border p-1.5"><b>F · Tomorrow plan</b><br /><span className="text-muted">Task, crew, resources</span></div>
+              <div className="col-span-2 rounded border border-dashed border-border p-1.5 text-center"><b>G · Attachments</b> <span className="text-muted">photos</span></div>
             </div>
             <div className="mt-2 grid grid-cols-3 gap-1 text-center text-[9px] text-muted">
               <div className="border-t border-text/30 pt-1">Prepared</div>

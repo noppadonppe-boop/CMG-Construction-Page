@@ -1,18 +1,23 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import type { FormEvent } from "react";
+import { useEffect, type FormEvent } from "react";
 import { projectOptions, useProjects } from "@/lib/db/projects";
 import { todayInBangkok } from "@/lib/format";
+import { dailyReportHref } from "@/lib/project-context";
 import { PageHeader, Skeleton } from "@/components/ui";
 import { Guard, NoProjects } from "@/components/guard";
 
-/** เลือกโครงการ + วันที่ แล้วเปิดฟอร์มรายงาน (ถ้ามีรายงานวันนั้นอยู่แล้ว จะเปิดฉบับเดิมมาแก้ไข) */
+/** เลือกโครงการ + วันที่ แล้วเปิดฟอร์มรายงาน (ถ้ามีรายงานวันนั้นอยู่แล้ว จะเปิดฉบับเดิมมาแก้ไข) · ?project= = มาจากโครงการที่เปิดอยู่ → เข้าฟอร์มเลย */
 export default function NewDailyReportPage() {
   const router = useRouter();
   const preset = useSearchParams().get("project") ?? undefined;
   const { projects, loading } = useProjects();
   const options = projectOptions(projects);
+  const direct = preset && options.some((p) => p.id === preset) ? preset : null;
+  useEffect(() => {
+    if (direct) router.replace(dailyReportHref(direct));
+  }, [direct, router]);
 
   function open(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -24,7 +29,7 @@ export default function NewDailyReportPage() {
     <>
       <PageHeader title="เขียนรายงานประจำวัน" subtitle="เลือกโครงการและวันที่ — ถ้ามีรายงานของวันนั้นแล้ว ระบบจะเปิดฉบับเดิมให้แก้ไข" />
       <Guard permission="daily.create">
-        {loading ? (
+        {loading || direct ? (
           <Skeleton />
         ) : options.length === 0 ? (
           <NoProjects />

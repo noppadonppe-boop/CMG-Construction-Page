@@ -12,6 +12,7 @@ import { readLastProject } from "@/lib/project-context";
 import type { ProjectStatus } from "@/lib/types";
 import { Pill, ProgressBar, Skeleton } from "@/components/ui";
 import { NoProjects } from "@/components/guard";
+import { ProjectActionsMenu } from "./projects/project-actions-menu";
 
 const STATUSES: ProjectStatus[] = ["active", "planning", "completed"];
 const noSubscribe = () => () => {};
@@ -143,34 +144,38 @@ function ProjectCard({
 }) {
   const schedule = scheduleStatus(p.actual_pct, p.planned_pct);
   return (
-    <Link
-      href={`/projects/${p.id}`}
-      className={`card flex flex-col gap-1 transition hover:border-primary hover:shadow-md ${recent ? "border-primary ring-2 ring-primary-soft" : ""}`}
-    >
-      <div className="flex items-center justify-between gap-2 text-xs text-muted">
-        <span>
-          {p.code}
-          {recent && <span className="ml-2 font-semibold text-primary">เปิดล่าสุด</span>}
-        </span>
-        {/* สถานะเทียบแผนมีความหมายเฉพาะโครงการที่กำลังก่อสร้าง */}
-        {p.status === "active" ? <Pill tone={schedule.tone}>{schedule.label}</Pill> : <Pill tone="info">{statusLabel[p.status]}</Pill>}
-      </div>
-      <div className="text-base font-semibold">{p.name}</div>
-      <div className="text-xs text-muted">
-        PM: {p.manager_name ?? "-"} · {formatMillions(p.contract_value)}
-      </div>
-      <div className="mt-2 flex items-center gap-2">
-        <ProgressBar actual={p.actual_pct} planned={p.planned_pct} />
-        <span className="text-xs whitespace-nowrap text-muted tabular-nums">
-          จริง {Math.round(p.actual_pct)}% / แผน {Math.round(p.planned_pct)}%
-        </span>
-      </div>
-      {(openIssues > 0 || missingToday) && (
-        <div className="mt-1 flex flex-wrap gap-x-3 text-xs">
-          {openIssues > 0 && <span className="text-warn">⚠ เรื่องค้าง {openIssues}</span>}
-          {missingToday && <span className={reportOverdue ? "text-bad" : "text-muted"}>ยังไม่มีรายงานวันนี้</span>}
+    // เมนู ⋯ วางทับการ์ด (ไม่อยู่ใน Link) — กดเมนูแล้วไม่พาเข้าโครงการ
+    <div className="relative">
+      <Link
+        href={`/projects/${p.id}`}
+        className={`card flex h-full flex-col gap-1 transition hover:border-primary hover:shadow-md ${recent ? "border-primary ring-2 ring-primary-soft" : ""}`}
+      >
+        <div className="flex items-center justify-between gap-2 pr-9 text-xs text-muted">
+          <span>
+            {p.code}
+            {recent && <span className="ml-2 font-semibold text-primary">เปิดล่าสุด</span>}
+          </span>
+          {/* สถานะเทียบแผนมีความหมายเฉพาะโครงการที่กำลังก่อสร้าง */}
+          {p.status === "active" ? <Pill tone={schedule.tone}>{schedule.label}</Pill> : <Pill tone="info">{statusLabel[p.status]}</Pill>}
         </div>
-      )}
-    </Link>
+        <div className="text-base font-semibold">{p.name}</div>
+        <div className="text-xs text-muted">
+          PM: {p.manager_name ?? "-"} · {formatMillions(p.contract_value)}
+        </div>
+        <div className="mt-2 flex items-center gap-2">
+          <ProgressBar actual={p.actual_pct} planned={p.planned_pct} />
+          <span className="text-xs whitespace-nowrap text-muted tabular-nums">
+            จริง {Math.round(p.actual_pct)}% / แผน {Math.round(p.planned_pct)}%
+          </span>
+        </div>
+        {(openIssues > 0 || missingToday) && (
+          <div className="mt-1 flex flex-wrap gap-x-3 text-xs">
+            {openIssues > 0 && <span className="text-warn">⚠ เรื่องค้าง {openIssues}</span>}
+            {missingToday && <span className={reportOverdue ? "text-bad" : "text-muted"}>ยังไม่มีรายงานวันนี้</span>}
+          </div>
+        )}
+      </Link>
+      <ProjectActionsMenu project={p} className="absolute top-3 right-3" />
+    </div>
   );
 }

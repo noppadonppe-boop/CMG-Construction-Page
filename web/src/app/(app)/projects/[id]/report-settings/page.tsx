@@ -5,10 +5,11 @@ import { useRouteParams } from "@/lib/static-export";
 import { useRef, useState } from "react";
 import { useAuth } from "@/lib/auth/context";
 import { ConflictError, DataError } from "@/lib/db/common";
-import { deleteLogo, saveDcrSettings, uploadLogo, useDcrSettings } from "@/lib/db/dcr";
+import { deleteLogo, saveDcrSettings, setNextReportNo, uploadLogo, useDcrSettings } from "@/lib/db/dcr";
 import { useProjects } from "@/lib/db/projects";
 import { firebaseErrorMessage } from "@/lib/firebase/errors";
-import { newCompany, type Company, type DcrSettings } from "@/lib/dcr";
+import { REPORT_LANG_KEYS, REPORT_LANGS, type ReportLang } from "@/lib/dcr-i18n";
+import { formatDocNo, newCompany, type Company, type DcrSettings, type DocFormat } from "@/lib/dcr";
 import { useSubmitOnce } from "@/lib/use-submit-once";
 import { EmptyState, PageHeader, Skeleton } from "@/components/ui";
 import { Guard } from "@/components/guard";
@@ -41,13 +42,14 @@ export default function ReportSettingsPage() {
       />
       <Guard permission="project.edit">
         {/* key = id: ฟอร์มเริ่มจากค่าตอนเปิด ไม่ถูกล้างเมื่อมีคนอื่นบันทึก (มีแจ้งเตือนแทน) */}
-        <SettingsForm key={project.id} projectId={project.id} initial={settings} live={settings} />
+        <SettingsForm key={project.id} project={project} initial={settings} live={settings} />
       </Guard>
     </>
   );
 }
 
-function SettingsForm({ projectId, initial, live }: { projectId: string; initial: DcrSettings; live: DcrSettings }) {
+function SettingsForm({ project, initial, live }: { project: { id: string; code: string; name: string }; initial: DcrSettings; live: DcrSettings }) {
+  const projectId = project.id;
   const { userProfile } = useAuth();
   const [s, setS] = useState(initial);
   const [error, setError] = useState<string>();
@@ -109,13 +111,40 @@ function SettingsForm({ projectId, initial, live }: { projectId: string; initial
       />
 
       <section className="card space-y-4">
+        <h3 className="font-semibold">หัวรายงานประจำวัน และเลขที่เอกสาร (Doc. no.)</h3>
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="block">
+            <span className="label">Project Name บนหัวรายงาน</span>
+            <input className="input" value={s.project_name} placeholder={project.name} onChange={(e) => update({ project_name: e.target.value })} />
+          </label>
+          <label className="block">
+            <span className="label">Project No. บนหัวรายงาน</span>
+            <input className="input" value={s.project_no} placeholder={project.code} onChange={(e) => update({ project_no: e.target.value })} />
+          </label>
+        </div>
+        <p className="-mt-2 text-xs text-muted">เว้นว่าง = ใช้ชื่อและรหัสจากข้อมูลโครงการหลัก · แก้ได้จากส่วน A ในฟอร์มรายงานด้วย</p>
+        <label className="block max-w-xs">
+          <span className="label">ภาษาเริ่มต้นของหน้ารายงาน</span>
+          <select className="input" value={s.report_lang} onChange={(e) => update({ report_lang: e.target.value as ReportLang })}>
+            {REPORT_LANG_KEYS.map((l) => <option key={l} value={l}>{REPORT_LANGS[l]}</option>)}
+          </select>
+          <span className="mt-1 block text-xs text-muted">เปิดรายงานมาเป็นภาษานี้ ผู้ดูสลับภาษาเองได้ที่หน้ารายงาน</span>
+        </label>
+        <DocNoEditor project={project} format={s.doc_format} counter={live.report_counter} onChange={(doc_format) => update({ doc_format })} />
+      </section>
+
+      <section className="card space-y-4">
         <h3 className="font-semibold">บริษัทและโลโก้บนหัวรายงาน</h3>
         <div className="grid gap-4 md:grid-cols-2">
           <CompanyEditor label="Client / เจ้าของงาน" company={s.client} onChange={(client) => update({ client })} {...companyProps} />
           <CompanyEditor label="Main contractor / ผู้รับเหมาหลัก" company={s.contractor} onChange={(contractor) => update({ contractor })} {...companyProps} />
         </div>
+        <label className="flex w-fit cursor-pointer items-center gap-2 text-sm">
+          <input type="checkbox" role="switch" className="dcr-switch" checked={s.show_consultant} onChange={(e) => update({ show_consultant: e.target.checked })} />
+          แสดง Consultant / PMC บนหัวรายงานและส่วน A
+        </label>
         <CompanyList
-          label="Consultant / ที่ปรึกษา / CM"
+          label="Consultant / PMC / ที่ปรึกษา"
           addLabel="เพิ่มที่ปรึกษา"
           companies={s.consultants}
           onChange={(consultants) => update({ consultants })}
@@ -160,6 +189,60 @@ function SettingsForm({ projectId, initial, live }: { projectId: string; initial
           {pending ? "กำลังบันทึก..." : "บันทึกการตั้งค่า"}
         </button>
       </div>
+    </div>
+  );
+}
+
+/** รูปแบบ Doc. no. = คำนำหน้า + เลขรัน (เติม 0) + คำต่อท้าย · เลขฉบับถัดไปตั้งแยก (บันทึกทันที) */
+function DocNoEditor({ project, format, counter, onChange }: { project: { id: string; code: string }; format: DocFormat; counter: number; onChange: (f: DocFormat) => void }) {
+  const { userProfile } = useAuth();
+  const [next, setNext] = useState(String(counter + 1));
+  const [msg, setMsg] = useState<string>();
+  const [pending, run] = useSubmitOnce();
+  const nextNo = Math.max(1, Math.floor(Number(next) || 1));
+  const custom = Boolean(format.prefix || format.suffix);
+  function saveNext() {
+    if (!userProfile) return;
+    run(async () => {
+      try {
+        await setNextReportNo(project.id, nextNo, userProfile.email);
+        setMsg(`ตั้งเลขฉบับถัดไปเป็น ${nextNo} แล้ว`);
+      } catch (e) {
+        setMsg("บันทึกไม่สำเร็จ: " + firebaseErrorMessage(e));
+      }
+    });
+  }
+  return (
+    <div className="rounded-lg border border-border p-3">
+      <div className="grid gap-3 sm:grid-cols-[2fr_6rem_1fr]">
+        <label className="block">
+          <span className="label">คำนำหน้า (Prefix)</span>
+          <input className="input font-mono" value={format.prefix} placeholder="GMTP-CAZ-CMG-DR-" onChange={(e) => onChange({ ...format, prefix: e.target.value })} />
+        </label>
+        <label className="block">
+          <span className="label">จำนวนหลัก</span>
+          <input className="input" type="number" min={1} max={8} value={format.digits} onChange={(e) => onChange({ ...format, digits: Math.min(8, Math.max(1, Number(e.target.value) || 1)) })} />
+        </label>
+        <label className="block">
+          <span className="label">คำต่อท้าย (Suffix)</span>
+          <input className="input font-mono" value={format.suffix} placeholder="-R0" onChange={(e) => onChange({ ...format, suffix: e.target.value })} />
+        </label>
+      </div>
+      <div className="mt-3 flex flex-wrap items-end gap-3">
+        <label className="block">
+          <span className="label">เลขฉบับถัดไป</span>
+          <input className="input w-28" type="number" min={1} value={next} onChange={(e) => { setNext(e.target.value); setMsg(undefined); }} />
+        </label>
+        <button type="button" className="btn" disabled={pending || nextNo === counter + 1} onClick={saveNext}>ตั้งเลขถัดไป</button>
+        <div className="ml-auto text-right">
+          <div className="text-xs text-muted">ตัวอย่าง Doc. no. ฉบับถัดไป</div>
+          <div className="font-mono font-semibold text-primary">{formatDocNo(format, project.code, nextNo)}</div>
+        </div>
+      </div>
+      <p className="mt-2 text-xs text-muted">
+        {custom ? "รูปแบบที่ตั้งเองใช้กับรายงานที่ออกเลขใหม่หลังบันทึกการตั้งค่า" : "ยังไม่ได้ตั้งรูปแบบ — ใช้รูปแบบระบบ DCR-xxx-0000"} · รายงานที่ออกเลขไปแล้วคงเลขเดิม · ออกเลขไปแล้ว {counter} ฉบับ
+        {msg && <span className="ml-2 text-ok">{msg}</span>}
+      </p>
     </div>
   );
 }

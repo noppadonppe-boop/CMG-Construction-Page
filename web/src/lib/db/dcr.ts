@@ -17,18 +17,24 @@ import { db } from "../firebase/client";
 import {
   blankReport,
   defaultSettings,
+  formatDocNo,
+  normalizeDcrRows,
+  reportCode,
   type Company,
   type DcrData,
   type DcrSettings,
   type DcrStatus,
   type Photo,
 } from "../dcr";
+import { normalizeReportLang } from "../dcr-i18n";
+import { layoutPagesForStore, normalizeLayoutPages, type LayoutPage, type LayoutTemplate } from "../dcr-layout";
 import { ConflictError, DataError, deleteFiles, newId, uploadFile, uploadFiles } from "./common";
 import { APP_NAME, projectRef, sectionCol, storagePath } from "./paths";
 
 // รายงานประจำวัน (DCR) — เก็บในโครงการของตัวเอง
 //   projects/{projectId}/settings/dcr               บริษัท/โลโก้ รายการช่าง/เครื่องจักร เลขรันรายงาน
 //   projects/{projectId}/daily_reports/{YYYY-MM-DD} รายงาน 1 ฉบับต่อวัน (schema 2)
+//   projects/{projectId}/settings/dcr_layouts       แม่แบบจัดหน้าหัวข้อ H ของโครงการ
 //   Storage: .../projects/{projectId}/settings/logos/*  และ  .../daily_reports/{date}/*.jpg
 
 export const settingsRef = (projectId: string) => doc(projectRef(projectId), "settings", "dcr");
@@ -44,9 +50,12 @@ function toSettings(snap: DocumentSnapshot, projectClient: string | null): DcrSe
     ...base,
     ...d,
     consultants: d.consultants ?? [],
+    show_consultant: d.show_consultant !== false,
     subcontractors: d.subcontractors ?? [],
     equipment: d.equipment ?? [],
     report_counter: Number(d.report_counter ?? 0),
+    doc_format: { ...base.doc_format, ...(d.doc_format ?? {}) },
+    report_lang: normalizeReportLang(d.report_lang),
     version: Number(d.version ?? 0),
   } as DcrSettings;
 }
@@ -80,6 +89,13 @@ export async function saveDcrSettings(projectId: string, settings: DcrSettings, 
   });
 }
 
+/** ตั้งเลขที่รายงานฉบับถัดไป (เช่น ต่อจากเลขเอกสารเดิมของโครงการ) */
+export async function setNextReportNo(projectId: string, next: number, actor: string) {
+  await runTransaction(db(), async (tx) => {
+    tx.set(settingsRef(projectId), { report_counter: Math.max(0, Math.floor(next) - 1), updated_at: serverTimestamp(), updated_by: actor }, { merge: true });
+  });
+}
+
 /** อัปโหลดโลโก้บริษัท (PNG/JPG/SVG/WebP ไม่เกิน 2 MB — เก็บไฟล์เดิม ไม่ย่อ เพื่อรักษาพื้นหลังโปร่งใส) */
 export async function uploadLogo(projectId: string, file: File): Promise<Company["logo"]> {
   if (!/^image\/(png|jpeg|svg\+xml|webp)$/.test(file.type)) throw new DataError("โลโก้ต้องเป็นไฟล์ PNG, JPG, SVG หรือ WebP");
@@ -98,14 +114,17 @@ export type DcrRecord = DcrData & { version: number; updated_by: string | null; 
 export function toDcr(snap: DocumentSnapshot, settings: DcrSettings): DcrRecord | null {
   if (!snap.exists()) return null;
   const d = snap.data();
-  if (d.schema === 2) return { ...(d as DcrData), form_standard: d.form_standard ?? null, version: Number(d.version ?? 0), updated_by: d.updated_by ?? null, legacy: false };
+  if (d.schema === 2) return { ...normalizeDcrRows(d as DcrData), form_standard: d.form_standard ?? null, version: Number(d.version ?? 0), updated_by: d.updated_by ?? null, legacy: false };
   // schema 1: weather / workers / work_done / equipment[] / issues / photos
   const report = blankReport(d.report_date ?? snap.id, settings);
   const sky = d.weather === "rain" ? "heavy_rain" : d.weather === "cloudy" ? "cloudy" : "clear";
   report.weather.am.sky = sky;
   report.weather.pm.sky = sky;
-  if (report.manpower.direct[0]) report.manpower.direct.at(-1)!.main = Number(d.workers ?? 0);
-  report.equipment = ((d.equipment ?? []) as string[]).map((name) => ({ name, owner: "", work_hours: 0, idle_hours: 0, status: "working" as const }));
+  if (report.manpower.direct[0]) {
+    const workers = Number(d.workers ?? 0);
+    report.manpower.direct[report.manpower.direct.length - 1] = { ...report.manpower.direct.at(-1)!, total: workers, present: workers };
+  }
+  report.equipment = ((d.equipment ?? []) as string[]).map((name) => ({ name, owner: "", quantity: 1, status: "working" as const, remark: "" }));
   report.progress = [
     {
       id: "legacy",
@@ -150,6 +169,8 @@ export async function previousReport(projectId: string, date: string, settings: 
 }
 
 export type NewPhotos = Record<string, { file: File; caption: string }[]>;
+/** รูปใหม่ของช่องในหัวข้อ H: slotId → ไฟล์ */
+export type NewLayoutImages = Record<string, File>;
 
 /**
  * บันทึกรายงาน (สร้างใหม่หรือแก้ไข)
@@ -160,18 +181,25 @@ export type NewPhotos = Record<string, { file: File; caption: string }[]>;
 export async function saveDcr(
   projectId: string,
   data: DcrData,
-  opts: { baseVersion: number | null; actor: string; force?: boolean; newPhotos: NewPhotos; removedPaths: string[] },
-): Promise<{ reportNo: number; version: number; progress: DcrData["progress"] }> {
+  opts: { baseVersion: number | null; actor: string; force?: boolean; newPhotos: NewPhotos; newLayoutImages?: NewLayoutImages; removedPaths: string[]; projectCode: string },
+): Promise<{ reportNo: number; docNo: string; version: number; progress: DcrData["progress"]; layoutPages: LayoutPage[] }> {
   const ref = reportRef(projectId, data.report_date);
   const uploads = Object.entries(opts.newPhotos).flatMap(([itemId, list]) =>
     list.map((p) => ({ itemId, caption: p.caption, file: p.file, path: storagePath(projectId, "daily_reports", data.report_date, `${newId()}.jpg`) })),
   );
-  const stored = await uploadFiles(uploads.map(({ path, file }) => ({ path, file })));
+  const slotIds = new Set(data.layout_pages.flatMap((p) => p.slots.map((s) => s.id)));
+  const layoutUploads = Object.entries(opts.newLayoutImages ?? {})
+    .filter(([slotId]) => slotIds.has(slotId))
+    .map(([slotId, file]) => ({ slotId, file, path: storagePath(projectId, "daily_reports", data.report_date, `layout-${newId()}.jpg`) }));
+  const stored = await uploadFiles([...uploads, ...layoutUploads].map(({ path, file }) => ({ path, file })));
   const added = new Map<string, Photo[]>();
   uploads.forEach((u, i) => added.set(u.itemId, [...(added.get(u.itemId) ?? []), { ...stored[i], caption: u.caption }]));
   const progress = data.progress.map((p) => ({ ...p, photos: [...p.photos, ...(added.get(p.id) ?? [])] }));
+  const slotImages = new Map(layoutUploads.map((u, i) => [u.slotId, stored[uploads.length + i]]));
+  const layoutPages = data.layout_pages.map((p) => ({ ...p, slots: p.slots.map((s) => (slotImages.has(s.id) ? { ...s, image: slotImages.get(s.id)! } : s)) }));
 
   let reportNo = data.report_no;
+  let docNo = data.doc_no ?? "";
   let version = 0;
   try {
     await runTransaction(db(), async (tx) => {
@@ -185,14 +213,18 @@ export async function saveDcr(
       if (opts.baseVersion !== null && !opts.force && currentVersion !== opts.baseVersion) {
         throw new ConflictError(snap.get("updated_by") ?? null);
       }
+      docNo = data.doc_no ?? "";
       if (!reportNo) {
         reportNo = Number(settingsSnap.get("report_counter") ?? 0) + 1;
         tx.set(settingsRef(projectId), { report_counter: reportNo }, { merge: true });
+        docNo = formatDocNo(settingsSnap.get("doc_format"), opts.projectCode, reportNo);
       }
       tx.set(ref, {
         ...data,
         progress,
+        layout_pages: layoutPagesForStore(layoutPages),
         report_no: reportNo,
+        ...(docNo ? { doc_no: docNo } : {}),
         schema: 2,
         version: (version = currentVersion + 1),
         ...(snap.exists() && !isLegacy ? {} : { created_at: serverTimestamp(), created_by: opts.actor }),
@@ -205,7 +237,7 @@ export async function saveDcr(
     throw e;
   }
   await deleteFiles(opts.removedPaths);
-  return { reportNo, version, progress };
+  return { reportNo, docNo: docNo || reportCode(opts.projectCode, reportNo), version, progress, layoutPages };
 }
 
 /** เปลี่ยนสถานะ + ลงชื่อ (ส่งตรวจ / ตรวจแล้ว / รับทราบ / ตีกลับเป็นร่าง) */
@@ -234,3 +266,71 @@ export async function setDcrStatus(
     });
   });
 }
+
+// ───────────── แม่แบบจัดหน้า (หัวข้อ H) ─────────────
+
+export const layoutTemplatesRef = (projectId: string) => doc(projectRef(projectId), "settings", "dcr_layouts");
+
+export type LayoutTemplates = { templates: LayoutTemplate[]; default_id: string | null };
+
+function toLayoutTemplates(snap: DocumentSnapshot): LayoutTemplates {
+  if (!snap.exists()) return { templates: [], default_id: null };
+  const d = snap.data();
+  const templates = ((d.templates ?? []) as Record<string, unknown>[]).map((t) => ({
+    id: String(t.id),
+    name: String(t.name ?? ""),
+    pages: normalizeLayoutPages(t.pages),
+    updated_by: String(t.updated_by ?? ""),
+    updated_at: String(t.updated_at ?? ""),
+  }));
+  const default_id = templates.some((t) => t.id === d.default_id) ? (d.default_id as string) : null;
+  return { templates, default_id };
+}
+
+/** แม่แบบจัดหน้าของโครงการ (realtime) */
+export function useLayoutTemplates(projectId: string | undefined) {
+  const [state, setState] = useState<{ key: string; value: LayoutTemplates | null; error?: string }>({ key: "", value: null });
+  useEffect(() => {
+    if (!projectId) return;
+    return onSnapshot(
+      layoutTemplatesRef(projectId),
+      (snap) => setState({ key: projectId, value: toLayoutTemplates(snap) }),
+      (e) => setState({ key: projectId, value: null, error: e.message }),
+    );
+  }, [projectId]);
+  const current = state.key === projectId ? state : null;
+  return { layouts: current?.value ?? null, loading: !!projectId && !current, error: current?.error };
+}
+
+/** แก้รายการแม่แบบใน transaction — อ่านค่าล่าสุดก่อนแก้ เพื่อไม่ทับแม่แบบที่คนอื่นเพิ่งบันทึก */
+async function changeLayoutTemplates(projectId: string, actor: string, fn: (current: LayoutTemplates) => LayoutTemplates) {
+  const ref = layoutTemplatesRef(projectId);
+  await runTransaction(db(), async (tx) => {
+    const next = fn(toLayoutTemplates(await tx.get(ref)));
+    tx.set(ref, {
+      templates: next.templates.map((t) => ({ ...t, pages: layoutPagesForStore(t.pages) })),
+      default_id: next.default_id,
+      updated_at: serverTimestamp(),
+      updated_by: actor,
+    });
+  });
+}
+
+/** บันทึกแม่แบบ — ชื่อซ้ำกับแม่แบบเดิม = บันทึกทับแม่แบบนั้น */
+export function saveLayoutTemplate(projectId: string, name: string, pages: LayoutPage[], actor: string, makeDefault: boolean) {
+  return changeLayoutTemplates(projectId, actor, ({ templates, default_id }) => {
+    const existing = templates.find((t) => t.name.trim().toLowerCase() === name.trim().toLowerCase());
+    const template: LayoutTemplate = { id: existing?.id ?? newId(), name: name.trim(), pages, updated_by: actor, updated_at: new Date().toISOString() };
+    return {
+      templates: existing ? templates.map((t) => (t.id === existing.id ? template : t)) : [...templates, template],
+      default_id: makeDefault ? template.id : default_id,
+    };
+  });
+}
+
+export const deleteLayoutTemplate = (projectId: string, id: string, actor: string) =>
+  changeLayoutTemplates(projectId, actor, ({ templates, default_id }) => ({ templates: templates.filter((t) => t.id !== id), default_id: default_id === id ? null : default_id }));
+
+/** แม่แบบเริ่มต้น: รายงานฉบับใหม่ของโครงการจะได้หน้า H ตามแม่แบบนี้ (null = ไม่มี) */
+export const setDefaultLayoutTemplate = (projectId: string, id: string | null, actor: string) =>
+  changeLayoutTemplates(projectId, actor, (current) => ({ ...current, default_id: id }));
