@@ -316,14 +316,14 @@ async function changeLayoutTemplates(projectId: string, actor: string, fn: (curr
   });
 }
 
-/** บันทึกแม่แบบ — ชื่อซ้ำกับแม่แบบเดิม = บันทึกทับแม่แบบนั้น */
+/** บันทึกแม่แบบ — ชื่อซ้ำกับแม่แบบเดิม = บันทึกทับแม่แบบนั้น · โครงการยังไม่มีแม่แบบเริ่มต้น = แม่แบบนี้เป็นค่าเริ่มต้น */
 export function saveLayoutTemplate(projectId: string, name: string, pages: LayoutPage[], actor: string, makeDefault: boolean) {
   return changeLayoutTemplates(projectId, actor, ({ templates, default_id }) => {
     const existing = templates.find((t) => t.name.trim().toLowerCase() === name.trim().toLowerCase());
     const template: LayoutTemplate = { id: existing?.id ?? newId(), name: name.trim(), pages, updated_by: actor, updated_at: new Date().toISOString() };
     return {
       templates: existing ? templates.map((t) => (t.id === existing.id ? template : t)) : [...templates, template],
-      default_id: makeDefault ? template.id : default_id,
+      default_id: makeDefault || !default_id ? template.id : default_id,
     };
   });
 }

@@ -494,9 +494,11 @@ function TemplateBar({
 }) {
   const [name, setName] = useState("");
   const [keepText, setKeepText] = useState(true);
-  const [makeDefault, setMakeDefault] = useState(false);
+  const [makeDefault, setMakeDefault] = useState(true);
   const [error, setError] = useState<string>();
   const templates = layouts?.templates ?? [];
+  // ยังไม่มีแม่แบบเริ่มต้น → แม่แบบที่บันทึกจะเป็นค่าเริ่มต้นเสมอ (ไม่งั้นรายงานใหม่จะไม่ได้หน้า H)
+  const forceDefault = !!layouts && !layouts.default_id;
   const willOverwrite = templates.some((t) => t.name.trim().toLowerCase() === name.trim().toLowerCase());
 
   async function save() {
@@ -505,7 +507,7 @@ function TemplateBar({
     if (willOverwrite && !confirm(`มีแม่แบบชื่อ “${name.trim()}” อยู่แล้ว — บันทึกทับ?`)) return;
     if (await onSave(name, keepText, makeDefault)) {
       setName("");
-      setMakeDefault(false);
+      setMakeDefault(true);
     }
   }
 
@@ -537,7 +539,7 @@ function TemplateBar({
       <div className="flex flex-wrap items-center gap-2">
         <input aria-label="ชื่อแม่แบบ" className="dcr-cell w-60 py-1" placeholder="ชื่อแม่แบบ เช่น รูปหน้างาน 4 ช่อง" value={name} onChange={(e) => { setName(e.target.value); setError(undefined); }} />
         <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={keepText} onChange={(e) => setKeepText(e.target.checked)} /> เก็บหัวข้อ/ข้อความด้วย</label>
-        <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={makeDefault} onChange={(e) => setMakeDefault(e.target.checked)} /> ใช้กับรายงานใหม่ (★)</label>
+        <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={makeDefault || forceDefault} disabled={forceDefault} title={forceDefault ? "โครงการยังไม่มีแม่แบบเริ่มต้น — แม่แบบแรกจะใช้กับรายงานใหม่อัตโนมัติ" : undefined} onChange={(e) => setMakeDefault(e.target.checked)} /> ใช้กับรายงานใหม่ (★)</label>
         <button type="button" className="btn px-2.5 py-1 text-xs" disabled={busy} onClick={save}>{busy ? "กำลังบันทึก..." : willOverwrite ? "บันทึกทับแม่แบบ" : "บันทึกกับโครงการ"}</button>
         {error && <span className="text-xs text-bad">{error}</span>}
       </div>
