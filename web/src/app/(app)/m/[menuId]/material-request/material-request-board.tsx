@@ -41,10 +41,10 @@ export function MaterialRequestBoard({ project }: { project: ProjectRecord }) {
   const [query, setQuery] = useState("");
   const [requestFormOpen, setRequestFormOpen] = useState(false);
   const [receiveFormOpen, setReceiveFormOpen] = useState(false);
-  const [receiveFor, setReceiveFor] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const today = todayInBangkok();
   const actor = userProfile?.email ?? "";
+  const approval = useApproval(project, actor);
 
   const byId = new Map(requests.map((r) => [r.id, r]));
   const balances = new Map(requests.map((r) => [r.id, materialBalance(r, receipts, today)]));
@@ -55,12 +55,6 @@ export function MaterialRequestBoard({ project }: { project: ProjectRecord }) {
   function pick(r: MaterialRequest) {
     setOpenId(r.id);
     scrollToSection(SECTION_ID.status);
-  }
-
-  function startReceive(r: MaterialRequest) {
-    setReceiveFor(r.id);
-    setReceiveFormOpen(true);
-    scrollToSection(SECTION_ID.receive);
   }
 
   function exportCsv() {
@@ -93,7 +87,7 @@ export function MaterialRequestBoard({ project }: { project: ProjectRecord }) {
         count={`${requests.length} รายการ`}
         actions={
           can("material.request") && (
-            <button type="button" className="btn btn-primary" onClick={() => setRequestFormOpen((o) => !o)}>+ เพิ่ม Request</button>
+            <button type="button" className="btn btn-primary" onClick={() => setRequestFormOpen((o) => !o)}>{requestFormOpen ? "ปิดฟอร์ม" : "+ เพิ่ม Request"}</button>
           )
         }
       >
@@ -107,30 +101,20 @@ export function MaterialRequestBoard({ project }: { project: ProjectRecord }) {
         count={`${receipts.length} ครั้ง`}
         actions={
           can("material.receive") && (
-            <button type="button" className="btn btn-primary" onClick={() => (setReceiveFor(""), setReceiveFormOpen((o) => !o))}>+ บันทึกรับของ</button>
+            <button type="button" className="btn btn-primary" onClick={() => setReceiveFormOpen((o) => !o)}>{receiveFormOpen ? "ปิดฟอร์ม" : "+ รับของ"}</button>
           )
         }
       >
         {receiveFormOpen && (
-          <ReceiveForm
-            key={receiveFor}
-            project={project}
-            actor={actor}
-            requests={outstanding}
-            balances={balances}
-            initial={receiveFor}
-            onDone={() => setReceiveFormOpen(false)}
-          />
+          <ReceiveForm project={project} actor={actor} requests={outstanding} balances={balances} canApprove={can("material.approve")} />
         )}
         {loading ? (
           <Loading />
         ) : (
           <ReceiveTable
-            project={project}
             receipts={receipts.filter((x) => matches(byId.get(x.request_id)))}
             byId={byId}
-            canApprove={can("material.approve")}
-            actor={actor}
+            approval={can("material.approve") ? approval : undefined}
             onPick={pick}
           />
         )}
@@ -142,6 +126,7 @@ export function MaterialRequestBoard({ project }: { project: ProjectRecord }) {
         count={`${outstanding.length} รายการค้างรับ`}
         actions={<button type="button" className="btn" onClick={exportCsv} disabled={requests.length === 0}>⬇ Export Excel</button>}
       >
+        {approval.error && <p className="rounded-lg bg-bad-soft px-3 py-2 text-sm text-bad">{approval.error}</p>}
         {loading ? (
           <Loading />
         ) : (
@@ -151,7 +136,12 @@ export function MaterialRequestBoard({ project }: { project: ProjectRecord }) {
             balances={balances}
             openId={openId}
             onToggle={(id) => setOpenId((cur) => (cur === id ? null : id))}
-            onReceive={can("material.receive") ? startReceive : undefined}
+            approval={can("material.approve") ? approval : undefined}
+            renderReceive={
+              can("material.receive")
+                ? (r) => <ReceiveForm project={project} actor={actor} requests={[r]} balances={balances} canApprove={can("material.approve")} fixed />
+                : undefined
+            }
           />
         )}
       </Section>
@@ -245,38 +235,40 @@ function RequestTable({ requests, balances, onPick }: { requests: MaterialReques
   );
 }
 
-function ReceiveTable({
-  project,
-  receipts,
-  byId,
-  canApprove,
-  actor,
-  onPick,
-}: {
-  project: ProjectRecord;
-  receipts: MaterialReceipt[];
-  byId: Map<string, MaterialRequest>;
-  canApprove: boolean;
-  actor: string;
-  onPick: (r: MaterialRequest) => void;
-}) {
+/** เปลี่ยนผล Material Approve ของการรับของ — ใช้ทั้งตารางรับของและ timeline */
+function useApproval(project: ProjectRecord, actor: string) {
   const [error, setError] = useState<string>();
   const [pending, startTransition] = useTransition();
-
-  function changeApproval(id: string, approval: MaterialApproval) {
+  const change = (id: string, value: MaterialApproval) => {
     setError(undefined);
     startTransition(async () => {
       try {
-        await updateReceiptApproval(project.id, id, approval, actor);
+        await updateReceiptApproval(project.id, id, value, actor);
       } catch (e) {
-        setError("บันทึกไม่สำเร็จ: " + firebaseErrorMessage(e));
+        setError("บันทึก Material Approve ไม่สำเร็จ: " + firebaseErrorMessage(e));
       }
     });
-  }
+  };
+  return { change, error, pending };
+}
 
+type Approval = ReturnType<typeof useApproval>;
+
+function ReceiveTable({
+  receipts,
+  byId,
+  approval,
+  onPick,
+}: {
+  receipts: MaterialReceipt[];
+  byId: Map<string, MaterialRequest>;
+  /** undefined = ไม่มีสิทธิ์เปลี่ยน */
+  approval?: Approval;
+  onPick: (r: MaterialRequest) => void;
+}) {
   return (
     <>
-      {error && <p className="rounded-lg bg-bad-soft px-3 py-2 text-sm text-bad">{error}</p>}
+      {approval?.error && <p className="rounded-lg bg-bad-soft px-3 py-2 text-sm text-bad">{approval.error}</p>}
       <Table
         groups={[["อ้างอิง Request", 2, G_ITEM], ["การรับของ", 5, G_RECV]]}
         head={<><th>Request No.</th><th>Description</th><th>Actual Receive Date</th><th className="text-right">จำนวนรับ</th><th>เลขที่ DO</th><th>Material Approve</th><th>Remark</th></>}
@@ -294,13 +286,13 @@ function ReceiveTable({
               </td>
               <td className="px-3 py-2">{x.do_no || "–"}</td>
               <td className="px-3 py-2">
-                {canApprove ? (
+                {approval ? (
                   <select
                     className="dcr-cell w-auto"
                     aria-label="Material Approve"
                     value={x.approval}
-                    disabled={pending}
-                    onChange={(e) => changeApproval(x.id, e.target.value as MaterialApproval)}
+                    disabled={approval.pending}
+                    onChange={(e) => approval.change(x.id, e.target.value as MaterialApproval)}
                   >
                     {Object.entries(materialApproval).map(([k, a]) => (
                       <option key={k} value={k}>{a.label}</option>
@@ -326,20 +318,22 @@ function StatusTable({
   balances,
   openId,
   onToggle,
-  onReceive,
+  approval,
+  renderReceive,
 }: {
   requests: MaterialRequest[];
   receipts: MaterialReceipt[];
   balances: Map<string, MaterialBalance>;
   openId: string | null;
   onToggle: (id: string) => void;
-  onReceive?: (r: MaterialRequest) => void;
+  approval?: Approval;
+  renderReceive?: (r: MaterialRequest) => ReactNode;
 }) {
   return (
     <>
       <Table
-        groups={[["Request", 3, G_ITEM], ["ขอเบิก", 2, G_REQ], ["รับสะสม (Approved)", 3, G_RECV], ["", 1, ""]]}
-        head={<><th>Request No.</th><th>Description</th><th>Unit</th><th className="text-right">Quantity</th><th>Require Schedule</th><th className="text-right">รับสะสม</th><th className="text-right">คงค้าง</th><th>รับล่าสุด</th><th>สถานะ</th></>}
+        groups={[["Request", 3, G_ITEM], ["ขอเบิก", 2, G_REQ], ["การรับ", 4, G_RECV], ["", 1, ""]]}
+        head={<><th>Request No.</th><th>Description</th><th>Unit</th><th className="text-right">Quantity</th><th>Require Schedule</th><th className="text-right">รับสะสม (Approved)</th><th className="text-right">รอตรวจ (Pending)</th><th className="text-right">คงค้าง</th><th>รับล่าสุด</th><th>สถานะ</th></>}
         empty={requests.length === 0}
       >
         {requests.map((r) => {
@@ -363,14 +357,21 @@ function StatusTable({
                     <div className="h-1 rounded-full bg-ok" style={{ width: `${pct}%` }} />
                   </div>
                 </td>
+                <td className={`px-3 py-2 text-right tabular-nums ${b.pending > 0 ? "text-warn" : "text-muted"}`}>{fmt(b.pending)}</td>
                 <td className={`px-3 py-2 text-right tabular-nums ${b.remaining > 0 ? "text-warn" : "text-muted"}`}>{fmt(b.remaining)}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{day(b.last_receive_date)}</td>
                 <td className="px-3 py-2"><Pill tone={b.status.tone}>{b.status.label}</Pill></td>
               </tr>
               {open && (
                 <tr className="bg-surface-2">
-                  <td colSpan={9} className="px-4 py-4">
-                    <Timeline request={r} receipts={receipts.filter((x) => x.request_id === r.id)} balance={b} onReceive={onReceive} />
+                  <td colSpan={10} className="px-4 py-4">
+                    <Timeline
+                      request={r}
+                      receipts={receipts.filter((x) => x.request_id === r.id)}
+                      balance={b}
+                      approval={approval}
+                      receiveForm={b.remaining > 0 ? renderReceive?.(r) : undefined}
+                    />
                   </td>
                 </tr>
               )}
@@ -389,12 +390,14 @@ function Timeline({
   request: r,
   receipts,
   balance: b,
-  onReceive,
+  approval,
+  receiveForm,
 }: {
   request: MaterialRequest;
   receipts: MaterialReceipt[];
   balance: MaterialBalance;
-  onReceive?: (r: MaterialRequest) => void;
+  approval?: Approval;
+  receiveForm?: ReactNode;
 }) {
   // เรียงเก่า → ใหม่เพื่อคำนวณยอดสะสม ณ แต่ละครั้ง
   const ordered = receipts.toSorted((a, b) => a.receive_date.localeCompare(b.receive_date) || a.created_at.localeCompare(b.created_at));
@@ -417,6 +420,12 @@ function Timeline({
                 <div className="flex flex-wrap items-center gap-2 text-sm">
                   <b>รับ {fmt(x.quantity)} {r.unit}</b>
                   <Pill tone={a.tone}>{a.label}</Pill>
+                  {approval && x.approval === "pending" && (
+                    <>
+                      <button type="button" className="btn px-2 py-0.5 text-xs text-ok" disabled={approval.pending} onClick={() => approval.change(x.id, "approved")}>✓ Approve</button>
+                      <button type="button" className="btn px-2 py-0.5 text-xs text-bad" disabled={approval.pending} onClick={() => approval.change(x.id, "rejected")}>✕ Reject</button>
+                    </>
+                  )}
                 </div>
                 <div className="text-xs text-muted">
                   {x.approval === "approved" ? `สะสม ${fmt(acc)} / ${fmt(r.quantity)} · คงค้าง ${fmt(Math.max(0, r.quantity - acc))}` : x.approval === "pending" ? "รอตรวจ — ยังไม่นับเข้ายอดสะสม" : "ไม่นับเข้ายอดสะสม"}
@@ -434,7 +443,8 @@ function Timeline({
         </ol>
       </div>
 
-      <div className="space-y-1.5 self-start rounded-lg border border-border bg-surface p-3 text-sm">
+      <div className="space-y-3 self-start">
+      <div className="space-y-1.5 rounded-lg border border-border bg-surface p-3 text-sm">
         <div className="mb-1 text-xs font-semibold">ยอด up to date</div>
         <Row label="ขอเบิก" value={`${fmt(r.quantity)} ${r.unit}`} />
         <Row label="รับแล้ว (Approved)" value={fmt(b.received)} className="text-ok" />
@@ -443,9 +453,13 @@ function Timeline({
           <span>คงค้าง</span>
           <span className={b.remaining > 0 ? "text-warn" : "text-muted"}>{fmt(b.remaining)} {r.unit}</span>
         </div>
-        {onReceive && b.remaining > 0 && (
-          <button type="button" className="btn btn-primary mt-2 w-full" onClick={() => onReceive(r)}>บันทึกรับของ</button>
-        )}
+      </div>
+      {receiveForm && (
+        <div>
+          <div className="mb-1.5 text-xs font-semibold">บันทึกรับของ {r.no}</div>
+          {receiveForm}
+        </div>
+      )}
       </div>
     </div>
   );
@@ -532,66 +546,79 @@ function ReceiveForm({
   actor,
   requests,
   balances,
-  initial,
-  onDone,
+  canApprove,
+  fixed = false,
 }: {
   project: ProjectRecord;
   actor: string;
   requests: MaterialRequest[];
   balances: Map<string, MaterialBalance>;
-  initial: string;
-  onDone: (no?: string) => void;
+  /** ผู้มีสิทธิ์ Approve รับของแล้วนับเข้ายอดได้ทันที — คนอื่นบันทึกเป็น Pending รอตรวจ */
+  canApprove: boolean;
+  /** รับของของ Request เดียว (ใน timeline) — ไม่ต้องเลือก Request No. */
+  fixed?: boolean;
 }) {
-  const [requestId, setRequestId] = useState(initial || requests[0]?.id || "");
-  const [v, setV] = useState({ receive_date: todayInBangkok(), quantity: "", do_no: "", approval: "pending" as MaterialApproval, remark: "" });
-  const { error, setError, pending, run } = useSave(onDone);
-  const r = requests.find((x) => x.id === requestId);
+  const blank = { receive_date: todayInBangkok(), quantity: "", do_no: "", approval: (canApprove ? "approved" : "pending") as MaterialApproval, remark: "" };
+  const [requestId, setRequestId] = useState(requests[0]?.id ?? "");
+  const [v, setV] = useState(blank);
+  const [saved, setSaved] = useState<string>();
+  const { error, setError, pending, run } = useSave(setSaved);
+  const r = requests.find((x) => x.id === requestId) ?? requests[0];
   const b = r ? balances.get(r.id)! : null;
   // ยอดที่ยังรับได้ = คงค้าง − ที่รอตรวจอยู่ (กันบันทึกซ้ำก่อนอนุมัติ)
   const receivable = b ? Math.max(0, b.remaining - b.pending) : 0;
 
-  if (requests.length === 0) return <p className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-sm text-muted">ไม่มี Request ที่ค้างรับ</p>;
+  if (!r || !b) return <p className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-sm text-muted">ไม่มี Request ที่ค้างรับ</p>;
+  if (fixed && receivable === 0 && !saved)
+    return <p className="rounded-lg border border-dashed border-border px-3 py-3 text-center text-xs text-muted">ยอดที่เหลือรอตรวจ (Pending) อยู่ทั้งหมด — Approve ก่อนจึงจะนับเข้ายอดรับ</p>;
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
+    if (!r) return;
     const quantity = Number(v.quantity);
-    if (!r) return setError("กรุณาเลือก Request No.");
+    setSaved(undefined);
     if (!v.receive_date) return setError("กรุณาใส่ Actual Receive Date");
     if (!(quantity > 0)) return setError("จำนวนรับต้องมากกว่า 0");
     if (quantity > receivable) return setError(`รับเกินยอดคงค้าง — รับได้อีก ${fmt(receivable)} ${r.unit}`);
+    const input = { request_id: r.id, receive_date: v.receive_date, quantity, do_no: v.do_no.trim(), approval: v.approval, remark: v.remark.trim() };
     run(async () => {
-      await createMaterialReceipt(project.id, { request_id: r.id, receive_date: v.receive_date, quantity, do_no: v.do_no.trim(), approval: v.approval, remark: v.remark.trim() }, actor);
-      return r.no;
+      await createMaterialReceipt(project.id, input, actor);
+      setV(blank);
+      return `บันทึกรับ ${r.no} จำนวน ${fmt(quantity)} ${r.unit} แล้ว` + (input.approval === "approved" ? "" : ` — สถานะ ${materialApproval[input.approval].label} ยังไม่นับเข้ายอดรับสะสม`);
     });
   }
 
+  const set = (k: keyof typeof blank) => (e: { target: { value: string } }) => setV({ ...v, [k]: e.target.value });
   return (
     <FormBox onSubmit={onSubmit} error={error}>
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_0.8fr_1fr_1fr]">
-        <select className="input" aria-label="Request No." value={requestId} onChange={(e) => setRequestId(e.target.value)}>
-          {requests.map((x) => (
-            <option key={x.id} value={x.id}>{x.no} · {x.description}</option>
-          ))}
-        </select>
-        <input className="input" type="date" aria-label="Actual Receive Date" title="Actual Receive Date" value={v.receive_date} onChange={(e) => setV({ ...v, receive_date: e.target.value })} />
-        <input className="input text-right" type="number" min="0" step="any" aria-label="จำนวนรับ" placeholder="จำนวนรับ *" value={v.quantity} onChange={(e) => setV({ ...v, quantity: e.target.value })} />
-        <input className="input" aria-label="เลขที่ DO" placeholder="เลขที่ DO / ใบส่งของ" maxLength={60} value={v.do_no} onChange={(e) => setV({ ...v, do_no: e.target.value })} />
-        <select className="input" aria-label="Material Approve" value={v.approval} onChange={(e) => setV({ ...v, approval: e.target.value as MaterialApproval })}>
+      <div className={`grid gap-2 ${fixed ? "grid-cols-2" : "sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_0.8fr_1fr_1fr]"}`}>
+        {!fixed && (
+          <select className="input" aria-label="Request No." value={r.id} onChange={(e) => setRequestId(e.target.value)}>
+            {requests.map((x) => (
+              <option key={x.id} value={x.id}>{x.no} · {x.description}</option>
+            ))}
+          </select>
+        )}
+        <input className="input" type="date" aria-label="Actual Receive Date" title="Actual Receive Date" value={v.receive_date} onChange={set("receive_date")} />
+        <input className="input text-right" type="number" min="0" step="any" aria-label="จำนวนรับ" placeholder={`จำนวนรับ (${r.unit}) *`} value={v.quantity} onChange={set("quantity")} />
+        <input className="input" aria-label="เลขที่ DO" placeholder="เลขที่ DO / ใบส่งของ" maxLength={60} value={v.do_no} onChange={set("do_no")} />
+        <select className="input" aria-label="Material Approve" value={v.approval} onChange={set("approval")} disabled={!canApprove}>
           {Object.entries(materialApproval).map(([k, a]) => (
             <option key={k} value={k}>{a.label}</option>
           ))}
         </select>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <input className="input flex-1" aria-label="Remark" placeholder="Remark" maxLength={300} value={v.remark} onChange={(e) => setV({ ...v, remark: e.target.value })} />
-        <button className="btn btn-primary" disabled={pending}>{pending ? "กำลังบันทึก..." : "บันทึกรับของ"}</button>
+        <input className="input flex-1" aria-label="Remark" placeholder="Remark" maxLength={300} value={v.remark} onChange={set("remark")} />
+        <button className="btn btn-primary" disabled={pending}>{pending ? "กำลังบันทึก..." : "บันทึก"}</button>
       </div>
-      {r && b && (
-        <div className="text-xs text-muted">
-          {r.description}{r.spec && ` · ${r.spec}`} · ขอ {fmt(r.quantity)} {r.unit} · รับแล้ว {fmt(b.received)}
-          {b.pending > 0 && ` · รอตรวจ ${fmt(b.pending)}`} · <b className="text-warn">รับได้อีก {fmt(receivable)} {r.unit}</b> · กำหนด {day(r.require_schedule)}
-        </div>
-      )}
+      <div className="text-xs text-muted">
+        {!fixed && <>{r.description}{r.spec && ` · ${r.spec}`} · ขอ {fmt(r.quantity)} {r.unit} · รับแล้ว {fmt(b.received)} · </>}
+        {b.pending > 0 && `รอตรวจ ${fmt(b.pending)} · `}
+        <b className="text-warn">รับได้อีก {fmt(receivable)} {r.unit}</b>
+        {!canApprove && " · บันทึกเป็น Pending — นับเข้ายอดเมื่อผู้มีสิทธิ์ Approve"}
+      </div>
+      {saved && <p className="rounded-lg bg-ok-soft px-3 py-2 text-sm text-ok">✓ {saved}</p>}
     </FormBox>
   );
 }
