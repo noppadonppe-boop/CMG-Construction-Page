@@ -41,6 +41,9 @@ export type Permission =
   | "document.upload"
   | "document.approve"
   | "document.delete"
+  | "material.request" // เพิ่มรายการขอเบิกวัสดุ
+  | "material.receive" // บันทึกรับของ
+  | "material.approve" // เปลี่ยนผล Material Approve ของการรับของ
   | "report.view"
   | "report.export"
   | "form.manage" // จัดการคลังมาตรฐานแบบฟอร์มกลาง (เพิ่ม/แก้/ลบ/อัปโหลด)
@@ -55,13 +58,15 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[] | "all"> = {
     "project.viewAll", "project.create", "project.edit", "project.delete", "progress.edit",
     ...VIEW, "daily.create", "issue.create", "issue.update",
     "document.upload", "document.approve", "document.delete", "report.view", "report.export", "form.manage",
+    "material.request", "material.receive", "material.approve",
   ],
   Executive: [...VIEW, "report.view", "report.export"],
   ProjectManager: [
     "project.edit", "progress.edit", ...VIEW, "daily.create", "issue.create", "issue.update",
     "document.upload", "document.approve", "report.view", "report.export",
+    "material.request", "material.receive", "material.approve",
   ],
-  Engineer: [...VIEW, "daily.create", "issue.create", "issue.update", "document.upload", "report.view"],
+  Engineer: [...VIEW, "daily.create", "issue.create", "issue.update", "document.upload", "report.view", "material.request", "material.receive"],
   QS: [...VIEW, "document.upload", "report.view", "report.export"],
   Staff: [...VIEW],
 };
