@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
+import { Fragment, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import { useAuth } from "@/lib/auth/context";
 import { downloadCsv } from "@/lib/csv";
 import { DataError } from "@/lib/db/common";
@@ -21,31 +21,30 @@ import { firebaseErrorMessage } from "@/lib/firebase/errors";
 import { formatDate, formatDateTime, todayInBangkok } from "@/lib/format";
 import { Pill } from "@/components/ui";
 
-// Material Request form: 3 ตาราง — 1. Request  2. รับของ  3. สถานะ / ยอดสะสม — เชื่อมกันด้วย Request No.
-// กด Request No. ในตาราง 1/2 → ไปตาราง 3 และเปิด timeline ของรายการนั้น
-
-type Tab = "request" | "receive" | "status";
+// Material Request form: 3 ตารางเรียงต่อกันในหน้าเดียว — 1. Request  2. รับของ  3. สถานะ / ยอดสะสม — เชื่อมกันด้วย Request No.
+// กด Request No. ในตาราง 1/2 → เลื่อนไปตาราง 3 และเปิด timeline ของรายการนั้น
 
 const fmt = (n: number) => n.toLocaleString("th-TH", { maximumFractionDigits: 2 });
 const day = (iso: string | null) => (iso ? formatDate(iso) : "–");
 
 const blankRequest = { description: "", spec: "", unit: "", quantity: "", require_schedule: "", remark: "" };
 
-/** ตารางขอเบิก/รับของ/ยอดสะสมของวัสดุในโครงการ — เปิดเป็น modal ทันทีที่ render */
-export function MaterialRequestDialog({ project, onClose }: { project: ProjectRecord; onClose: () => void }) {
-  const { userProfile, can } = useAuth();
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  const { requests, receipts, loading, error } = useMaterials(project);
-  const [tab, setTab] = useState<Tab>("request");
-  const [query, setQuery] = useState("");
-  const [formOpen, setFormOpen] = useState(false);
-  const [openId, setOpenId] = useState<string | null>(null);
-  const [receiveFor, setReceiveFor] = useState<string>("");
-  const today = todayInBangkok();
+const SECTION_ID = { request: "mr-request", receive: "mr-receive", status: "mr-status" } as const;
 
-  useEffect(() => {
-    if (!dialogRef.current?.open) dialogRef.current?.showModal();
-  }, []);
+/** เลื่อนไปที่ตาราง — รอ render รอบถัดไปก่อน (ฟอร์ม/timeline ที่เพิ่งเปิดจะได้อยู่ในหน้าแล้ว) */
+const scrollToSection = (id: string) => requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }));
+
+/** ตารางขอเบิก/รับของ/ยอดสะสมของวัสดุในโครงการ */
+export function MaterialRequestBoard({ project }: { project: ProjectRecord }) {
+  const { userProfile, can } = useAuth();
+  const { requests, receipts, loading, error } = useMaterials(project);
+  const [query, setQuery] = useState("");
+  const [requestFormOpen, setRequestFormOpen] = useState(false);
+  const [receiveFormOpen, setReceiveFormOpen] = useState(false);
+  const [receiveFor, setReceiveFor] = useState("");
+  const [openId, setOpenId] = useState<string | null>(null);
+  const today = todayInBangkok();
+  const actor = userProfile?.email ?? "";
 
   const byId = new Map(requests.map((r) => [r.id, r]));
   const balances = new Map(requests.map((r) => [r.id, materialBalance(r, receipts, today)]));
@@ -53,21 +52,16 @@ export function MaterialRequestDialog({ project, onClose }: { project: ProjectRe
   const matches = (r: MaterialRequest | undefined) => !q || (!!r && `${r.no} ${r.description} ${r.spec}`.toLowerCase().includes(q));
   const outstanding = requests.filter((r) => balances.get(r.id)!.status.tone !== "ok");
 
-  function go(next: Tab, request?: MaterialRequest) {
-    setTab(next);
-    setFormOpen(false);
-    setQuery(request?.no ?? "");
-    setOpenId(next === "status" && request ? request.id : null);
+  function pick(r: MaterialRequest) {
+    setOpenId(r.id);
+    scrollToSection(SECTION_ID.status);
   }
 
-  function startReceive(request: MaterialRequest) {
-    setTab("receive");
-    setQuery(request.no);
-    setReceiveFor(request.id);
-    setFormOpen(true);
+  function startReceive(r: MaterialRequest) {
+    setReceiveFor(r.id);
+    setReceiveFormOpen(true);
+    scrollToSection(SECTION_ID.receive);
   }
-
-  const canAdd = tab === "request" ? can("material.request") : tab === "receive" ? can("material.receive") : false;
 
   function exportCsv() {
     downloadCsv(
@@ -80,112 +74,107 @@ export function MaterialRequestDialog({ project, onClose }: { project: ProjectRe
     );
   }
 
-  const tabs: { key: Tab; label: string; count: string }[] = [
-    { key: "request", label: "1. Request", count: String(requests.length) },
-    { key: "receive", label: "2. รับของ", count: String(receipts.length) },
-    { key: "status", label: "3. สถานะ / ยอดสะสม", count: `${outstanding.length} ค้าง` },
-  ];
-
   return (
-    <dialog
-      ref={dialogRef}
-      onClose={onClose}
-      className="m-auto h-[calc(100dvh-2rem)] w-[min(76rem,calc(100vw-2rem))] max-w-none overflow-hidden rounded-2xl border border-border bg-surface p-0 text-text backdrop:bg-black/50"
-    >
-      <div className="flex h-full flex-col">
-        <div className="flex items-center gap-3 border-b border-border px-5 py-4">
-          <div className="grid size-9 place-items-center rounded-lg bg-primary-soft text-lg">📦</div>
-          <div className="flex-1">
-            <h2 className="font-bold">Material Request form</h2>
-            <div className="text-xs text-muted">
-              {project.code} · {project.name} · ยอด up to date {formatDateTime(new Date().toISOString())}
-            </div>
-          </div>
-          <button type="button" className="text-xl text-muted hover:text-text" aria-label="ปิด" onClick={() => dialogRef.current?.close()}>
-            ×
-          </button>
-        </div>
-
-        <div className="flex gap-1 overflow-x-auto border-b border-border px-5" role="tablist">
-          {tabs.map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              role="tab"
-              aria-selected={tab === t.key}
-              className={`-mb-px whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium ${tab === t.key ? "border-primary text-primary" : "border-transparent text-muted hover:text-text"}`}
-              onClick={() => go(t.key)}
-            >
-              {t.label} <span className="text-xs font-normal text-muted">{t.count}</span>
-            </button>
-          ))}
-        </div>
-
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              className="input max-w-sm flex-1"
-              placeholder="ค้นหา Request No. / Description / Spec"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-            {query && (
-              <button type="button" className="btn px-2.5 py-1.5 text-xs" onClick={() => setQuery("")}>ล้างตัวกรอง</button>
-            )}
-            <div className="flex-1" />
-            {tab === "status" ? (
-              <button type="button" className="btn" onClick={exportCsv} disabled={requests.length === 0}>⬇ Export Excel</button>
-            ) : (
-              canAdd && (
-                <button type="button" className="btn btn-primary" onClick={() => (setFormOpen((o) => !o), setReceiveFor(""))}>
-                  + {tab === "request" ? "เพิ่ม Request" : "บันทึกรับของ"}
-                </button>
-              )
-            )}
-          </div>
-
-          {formOpen && tab === "request" && (
-            <RequestForm project={project} actor={userProfile?.email ?? ""} onDone={(no) => (setFormOpen(false), setQuery(no ?? ""))} />
-          )}
-          {formOpen && tab === "receive" && (
-            <ReceiveForm
-              project={project}
-              actor={userProfile?.email ?? ""}
-              requests={outstanding}
-              balances={balances}
-              initial={receiveFor}
-              onDone={(no) => (setFormOpen(false), setQuery(no ?? ""))}
-            />
-          )}
-
-          {error && <p className="rounded-lg bg-bad-soft px-3 py-2 text-sm text-bad">โหลดข้อมูลไม่สำเร็จ: {error}</p>}
-          {loading ? (
-            <p className="py-10 text-center text-sm text-muted">กำลังโหลด...</p>
-          ) : tab === "request" ? (
-            <RequestTable requests={requests.filter(matches)} balances={balances} onPick={(r) => go("status", r)} />
-          ) : tab === "receive" ? (
-            <ReceiveTable
-              project={project}
-              receipts={receipts.filter((x) => matches(byId.get(x.request_id)))}
-              byId={byId}
-              canApprove={can("material.approve")}
-              actor={userProfile?.email ?? ""}
-              onPick={(r) => go("status", r)}
-            />
-          ) : (
-            <StatusTable
-              requests={requests.filter(matches)}
-              receipts={receipts}
-              balances={balances}
-              openId={openId}
-              onToggle={(id) => setOpenId((cur) => (cur === id ? null : id))}
-              onReceive={can("material.receive") ? startReceive : undefined}
-            />
-          )}
-        </div>
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center gap-2">
+        <input className="input max-w-sm flex-1" placeholder="ค้นหา Request No. / Description / Spec — กรองทั้ง 3 ตาราง" value={query} onChange={(e) => setQuery(e.target.value)} />
+        {query && (
+          <button type="button" className="btn px-2.5 py-1.5 text-xs" onClick={() => setQuery("")}>ล้างตัวกรอง</button>
+        )}
+        <div className="flex-1" />
+        <span className="text-xs text-muted">ยอด up to date {formatDateTime(new Date().toISOString())}</span>
       </div>
-    </dialog>
+
+      {error && <p className="rounded-lg bg-bad-soft px-3 py-2 text-sm text-bad">โหลดข้อมูลไม่สำเร็จ: {error}</p>}
+
+      <Section
+        id={SECTION_ID.request}
+        title="1. Request"
+        count={`${requests.length} รายการ`}
+        actions={
+          can("material.request") && (
+            <button type="button" className="btn btn-primary" onClick={() => setRequestFormOpen((o) => !o)}>+ เพิ่ม Request</button>
+          )
+        }
+      >
+        {requestFormOpen && <RequestForm project={project} actor={actor} onDone={() => setRequestFormOpen(false)} />}
+        {loading ? <Loading /> : <RequestTable requests={requests.filter(matches)} balances={balances} onPick={pick} />}
+      </Section>
+
+      <Section
+        id={SECTION_ID.receive}
+        title="2. รับของ"
+        count={`${receipts.length} ครั้ง`}
+        actions={
+          can("material.receive") && (
+            <button type="button" className="btn btn-primary" onClick={() => (setReceiveFor(""), setReceiveFormOpen((o) => !o))}>+ บันทึกรับของ</button>
+          )
+        }
+      >
+        {receiveFormOpen && (
+          <ReceiveForm
+            key={receiveFor}
+            project={project}
+            actor={actor}
+            requests={outstanding}
+            balances={balances}
+            initial={receiveFor}
+            onDone={() => setReceiveFormOpen(false)}
+          />
+        )}
+        {loading ? (
+          <Loading />
+        ) : (
+          <ReceiveTable
+            project={project}
+            receipts={receipts.filter((x) => matches(byId.get(x.request_id)))}
+            byId={byId}
+            canApprove={can("material.approve")}
+            actor={actor}
+            onPick={pick}
+          />
+        )}
+      </Section>
+
+      <Section
+        id={SECTION_ID.status}
+        title="3. สถานะ / ยอดสะสม"
+        count={`${outstanding.length} รายการค้างรับ`}
+        actions={<button type="button" className="btn" onClick={exportCsv} disabled={requests.length === 0}>⬇ Export Excel</button>}
+      >
+        {loading ? (
+          <Loading />
+        ) : (
+          <StatusTable
+            requests={requests.filter(matches)}
+            receipts={receipts}
+            balances={balances}
+            openId={openId}
+            onToggle={(id) => setOpenId((cur) => (cur === id ? null : id))}
+            onReceive={can("material.receive") ? startReceive : undefined}
+          />
+        )}
+      </Section>
+    </div>
   );
+}
+
+function Section({ id, title, count, actions, children }: { id: string; title: string; count: string; actions?: ReactNode; children: ReactNode }) {
+  return (
+    <section id={id} className="card scroll-mt-4 space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="text-lg font-bold">{title}</h2>
+        <span className="text-sm text-muted">{count}</span>
+        <div className="flex-1" />
+        {actions}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function Loading() {
+  return <p className="py-8 text-center text-sm text-muted">กำลังโหลด...</p>;
 }
 
 /* ---------- ตาราง ---------- */

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useState } from "react";
+import { Suspense } from "react";
 import { useRouteParams } from "@/lib/static-export";
 import { useAuth } from "@/lib/auth/context";
 import { cardVisibleIn, menuVisibleIn, useMenus } from "@/lib/db/menus";
@@ -9,7 +9,6 @@ import { useProjects } from "@/lib/db/projects";
 import { useCurrentProjectId } from "@/lib/project-context";
 import { EmptyState, PageHeader, Skeleton } from "@/components/ui";
 import { LinkCard } from "../../menus/link-card";
-import { MaterialRequestDialog } from "./material-request-dialog";
 
 /** เมนูที่มีปุ่มเปิด Material Request form — จับจากชื่อเมนู */
 const isMaterialMenu = (name: string) => /material\s*request/i.test(name);
@@ -33,7 +32,6 @@ function CustomMenu() {
   const requested = useCurrentProjectId();
   const projectId = requested && byId.has(requested) ? requested : null;
   const menu = menus.find((m) => m.id === menuId);
-  const [materialOpen, setMaterialOpen] = useState(false);
 
   if (loading || loadingProjects) return <Skeleton />;
   if (error) return <p className="rounded-lg bg-bad-soft px-3 py-2 text-bad">โหลดเมนูไม่สำเร็จ: {error}</p>;
@@ -42,8 +40,7 @@ function CustomMenu() {
     return <EmptyState>{projectId ? "เมนูนี้ไม่ได้แสดงในโครงการนี้" : "เมนูนี้แสดงเฉพาะในบางโครงการ — เลือกโครงการก่อน"}</EmptyState>;
 
   const cards = menu.cards.filter((c) => cardVisibleIn(menu, c, projectId));
-  const project = projectId ? byId.get(projectId) : undefined;
-  const showMaterial = !!project && isMaterialMenu(menu.name);
+  const showMaterial = !!projectId && isMaterialMenu(menu.name);
   const manageHref = `/menus?menu=${menu.id}${projectId ? `&scope=${projectId}` : ""}`;
   return (
     <>
@@ -53,7 +50,7 @@ function CustomMenu() {
         actions={
           <>
             {showMaterial && (
-              <button type="button" className="btn btn-primary" onClick={() => setMaterialOpen(true)}>📦 Material Request form</button>
+              <Link href={`/m/${menu.id}/material-request?project=${projectId}`} className="btn btn-primary">📦 Material Request form</Link>
             )}
             {can("menu.manage") && <Link href={manageHref} className="btn">จัดการ Cards</Link>}
           </>
@@ -75,7 +72,6 @@ function CustomMenu() {
           ))}
         </div>
       )}
-      {showMaterial && materialOpen && <MaterialRequestDialog project={project} onClose={() => setMaterialOpen(false)} />}
     </>
   );
 }
