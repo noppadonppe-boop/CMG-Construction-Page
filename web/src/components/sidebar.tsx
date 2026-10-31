@@ -268,7 +268,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         </Suspense>
       </aside>
 
-      <div className="min-w-0">
+      {/* @container: ให้หน้าที่ต้องการพื้นที่กว้าง (เช่น Material Request) ขยายเกิน max-w ของ main ได้ด้วยหน่วย cqw */}
+      <div className="@container min-w-0">
         <header className="sticky top-0 z-[5] flex print:hidden items-center gap-3 border-b border-border bg-surface px-4 py-2.5 md:px-7 md:py-3.5">
           <button className="grid size-9 flex-none place-items-center rounded-lg text-muted md:hidden" onClick={() => setOpen(true)} aria-label="เปิดเมนู">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>

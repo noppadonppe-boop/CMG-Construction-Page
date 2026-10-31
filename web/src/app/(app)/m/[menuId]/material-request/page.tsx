@@ -31,7 +31,8 @@ function MaterialRequest() {
   if (!project) return <EmptyState>ไม่พบโครงการนี้ หรือคุณไม่มีสิทธิ์เข้าถึง — เลือกโครงการก่อน</EmptyState>;
 
   return (
-    <>
+    // ตาราง 3 ชุดกว้าง — ขยายเป็น 80% ของพื้นที่เนื้อหา (เกิน max-w ของ main ได้) จัดกึ่งกลาง
+    <div className="relative left-1/2 w-[max(100%,80cqw)] -translate-x-1/2">
       <PageHeader
         eyebrow={menu?.name ?? "Material Request"}
         title="Material Request form"
@@ -39,6 +40,6 @@ function MaterialRequest() {
         actions={<Link href={`/m/${menuId}?project=${project.id}`} className="btn">← กลับไปที่เมนู</Link>}
       />
       <MaterialRequestBoard project={project} />
-    </>
+    </div>
   );
 }
