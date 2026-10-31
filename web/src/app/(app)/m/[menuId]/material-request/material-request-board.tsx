@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState, useTransition, type FormEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import { useAuth } from "@/lib/auth/context";
 import { downloadCsv } from "@/lib/csv";
 import { DataError } from "@/lib/db/common";
@@ -13,12 +13,13 @@ import {
   useMaterials,
   type MaterialApproval,
   type MaterialBalance,
+  type MaterialFile,
   type MaterialReceipt,
   type MaterialRequest,
 } from "@/lib/db/materials";
 import type { ProjectRecord } from "@/lib/db/projects";
 import { firebaseErrorMessage } from "@/lib/firebase/errors";
-import { formatDate, formatDateTime, todayInBangkok } from "@/lib/format";
+import { formatDate, formatDateTime, formatFileSize, todayInBangkok } from "@/lib/format";
 import { Pill } from "@/components/ui";
 
 // Material Request form: 3 ตารางเรียงต่อกันในหน้าเดียว — 1. Request  2. รับของ  3. สถานะ / ยอดสะสม — เชื่อมกันด้วย Request No.
@@ -39,7 +40,8 @@ export function MaterialRequestBoard({ project }: { project: ProjectRecord }) {
   const { userProfile, can } = useAuth();
   const { requests, receipts, loading, error } = useMaterials(project);
   const [query, setQuery] = useState("");
-  const [requestFormOpen, setRequestFormOpen] = useState(false);
+  const [requestDialogOpen, setRequestDialogOpen] = useState(false);
+  const [notice, setNotice] = useState<string>();
   const [receiveFormOpen, setReceiveFormOpen] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const today = todayInBangkok();
@@ -87,13 +89,17 @@ export function MaterialRequestBoard({ project }: { project: ProjectRecord }) {
         count={`${requests.length} รายการ`}
         actions={
           can("material.request") && (
-            <button type="button" className="btn btn-primary" onClick={() => setRequestFormOpen((o) => !o)}>{requestFormOpen ? "ปิดฟอร์ม" : "+ เพิ่ม Request"}</button>
+            <button type="button" className="btn btn-primary" onClick={() => setRequestDialogOpen(true)}>+ เพิ่ม Request</button>
           )
         }
       >
-        {requestFormOpen && <RequestForm project={project} actor={actor} onDone={() => setRequestFormOpen(false)} />}
+        {notice && <p className="rounded-lg bg-ok-soft px-3 py-2 text-sm text-ok">✓ {notice}</p>}
         {loading ? <Loading /> : <RequestTable requests={requests.filter(matches)} balances={balances} onPick={pick} />}
       </Section>
+
+      {requestDialogOpen && (
+        <RequestDialog project={project} actor={actor} onClose={() => setRequestDialogOpen(false)} onSaved={(no) => setNotice(`เพิ่ม ${no} แล้ว`)} />
+      )}
 
       <Section
         id={SECTION_ID.receive}
@@ -213,8 +219,8 @@ function RequestTable({ requests, balances, onPick }: { requests: MaterialReques
   return (
     <>
       <Table
-        groups={[["ข้อมูลวัสดุ", 3, G_ITEM], ["การขอเบิก", 4, G_REQ], ["", 1, ""]]}
-        head={<><th>Request No.</th><th>Description</th><th>Spec</th><th>Unit</th><th className="text-right">Quantity</th><th>Require Schedule</th><th>Remark</th><th>สถานะ</th></>}
+        groups={[["ข้อมูลวัสดุ", 3, G_ITEM], ["การขอเบิก", 5, G_REQ], ["", 1, ""]]}
+        head={<><th>Request No.</th><th>Description</th><th>Spec</th><th>Unit</th><th className="text-right">Quantity</th><th>Require Schedule</th><th>Remark</th><th>ไฟล์แนบ</th><th>สถานะ</th></>}
         empty={requests.length === 0}
       >
         {requests.map((r) => (
@@ -226,6 +232,7 @@ function RequestTable({ requests, balances, onPick }: { requests: MaterialReques
             <td className="px-3 py-2 text-right tabular-nums">{fmt(r.quantity)}</td>
             <td className="px-3 py-2 whitespace-nowrap">{day(r.require_schedule)}</td>
             <td className="px-3 py-2 text-muted">{r.remark || "–"}</td>
+            <td className="max-w-48 px-3 py-2"><FileLinks files={r.files} /></td>
             <td className="px-3 py-2"><Pill tone={balances.get(r.id)!.status.tone}>{balances.get(r.id)!.status.label}</Pill></td>
           </tr>
         ))}
@@ -439,6 +446,11 @@ function Timeline({
             <div className="text-xs text-muted">{formatDateTime(r.created_at)} · {r.created_by} · กำหนดใช้ {day(r.require_schedule)}</div>
             <div className="text-sm"><b>Request {fmt(r.quantity)} {r.unit}</b> · {r.description}{r.spec && ` · ${r.spec}`}</div>
             {r.remark && <div className="text-xs text-muted">{r.remark}</div>}
+            {r.files.length > 0 && (
+              <div className="mt-1">
+                <FileLinks files={r.files} />
+              </div>
+            )}
           </li>
         </ol>
       </div>
@@ -501,10 +513,30 @@ function FormBox({ onSubmit, error, children }: { onSubmit: (e: FormEvent) => vo
   );
 }
 
-function RequestForm({ project, actor, onDone }: { project: ProjectRecord; actor: string; onDone: (no?: string) => void }) {
+const MAX_FILE_SIZE = 20 * 1024 * 1024;
+
+/** ฟอร์มเพิ่ม Request พร้อมไฟล์แนบ — เปิดเป็น modal ทันทีที่ render, บันทึกแล้วปิดและเรียก onClose */
+function RequestDialog({ project, actor, onClose, onSaved }: { project: ProjectRecord; actor: string; onClose: () => void; onSaved: (no: string) => void }) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [v, setV] = useState(blankRequest);
-  const { error, setError, pending, run } = useSave(onDone);
+  const [files, setFiles] = useState<File[]>([]);
+  const [error, setError] = useState<string>();
+  const [pending, startTransition] = useTransition();
   const set = (k: keyof typeof blankRequest) => (e: { target: { value: string } }) => setV({ ...v, [k]: e.target.value });
+  const close = () => dialogRef.current?.close();
+
+  useEffect(() => {
+    if (!dialogRef.current?.open) dialogRef.current?.showModal();
+  }, []);
+
+  function pickFiles(list: FileList | null) {
+    const picked = Array.from(list ?? []);
+    const tooBig = picked.filter((f) => f.size > MAX_FILE_SIZE);
+    setError(tooBig.length ? `ไฟล์ใหญ่เกิน ${formatFileSize(MAX_FILE_SIZE)}: ${tooBig.map((f) => f.name).join(", ")}` : undefined);
+    setFiles((prev) => [...prev, ...picked.filter((f) => f.size <= MAX_FILE_SIZE)]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -513,31 +545,117 @@ function RequestForm({ project, actor, onDone }: { project: ProjectRecord; actor
     if (!v.unit.trim()) return setError("กรุณาใส่ Unit");
     if (!(quantity > 0)) return setError("Quantity ต้องมากกว่า 0");
     if (!v.require_schedule) return setError("กรุณาใส่ Require Schedule");
-    run(() =>
-      createMaterialRequest(
-        project.id,
-        { description: v.description.trim(), spec: v.spec.trim(), unit: v.unit.trim(), quantity, require_schedule: v.require_schedule, remark: v.remark.trim() },
-        actor,
-      ),
-    );
+    const input = { description: v.description.trim(), spec: v.spec.trim(), unit: v.unit.trim(), quantity, require_schedule: v.require_schedule, remark: v.remark.trim() };
+    setError(undefined);
+    startTransition(async () => {
+      try {
+        onSaved(await createMaterialRequest(project.id, input, files, actor));
+        close();
+      } catch (err) {
+        setError(err instanceof DataError ? err.message : "บันทึกไม่สำเร็จ: " + firebaseErrorMessage(err));
+      }
+    });
   }
 
   return (
-    <FormBox onSubmit={onSubmit} error={error}>
-      <div className="text-xs text-muted">Request No. สร้างอัตโนมัติเมื่อบันทึก</div>
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-        <input className="input" aria-label="Description" placeholder="Description *" maxLength={200} value={v.description} onChange={set("description")} />
-        <input className="input" aria-label="Spec" placeholder="Spec" maxLength={200} value={v.spec} onChange={set("spec")} />
-        <input className="input" aria-label="Unit" placeholder="Unit *" maxLength={30} value={v.unit} onChange={set("unit")} />
-        <input className="input text-right" aria-label="Quantity" placeholder="Quantity *" type="number" min="0" step="any" value={v.quantity} onChange={set("quantity")} />
-        <label className="flex items-center gap-2 text-sm text-muted">
-          <span className="whitespace-nowrap">Require Schedule *</span>
-          <input className="input" type="date" value={v.require_schedule} onChange={set("require_schedule")} />
-        </label>
-        <input className="input lg:col-span-2" aria-label="Remark" placeholder="Remark" maxLength={300} value={v.remark} onChange={set("remark")} />
-        <button className="btn btn-primary" disabled={pending}>{pending ? "กำลังบันทึก..." : "บันทึก Request"}</button>
-      </div>
-    </FormBox>
+    <dialog
+      ref={dialogRef}
+      onClose={onClose}
+      onCancel={(e) => pending && e.preventDefault()}
+      className="m-auto max-h-[calc(100dvh-2rem)] w-[min(44rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-border bg-surface p-0 text-text backdrop:bg-black/50"
+    >
+      <form onSubmit={onSubmit} className="flex max-h-[calc(100dvh-2rem)] flex-col">
+        <div className="flex items-center gap-3 border-b border-border px-5 py-4">
+          <div className="grid size-9 place-items-center rounded-lg bg-primary-soft text-lg text-primary">+</div>
+          <div className="flex-1">
+            <h2 className="font-bold">เพิ่ม Material Request</h2>
+            <div className="text-xs text-muted">{project.code} · Request No. สร้างอัตโนมัติเมื่อบันทึก</div>
+          </div>
+          <button type="button" className="text-xl text-muted hover:text-text" aria-label="ปิด" onClick={close} disabled={pending}>
+            ×
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-bad">ข้อมูลวัสดุ</h3>
+            <div>
+              <label className="label" htmlFor="mr-desc">Description *</label>
+              <input id="mr-desc" className="input" placeholder="เช่น เหล็กเส้น DB12" maxLength={200} value={v.description} onChange={set("description")} autoFocus />
+            </div>
+            <div>
+              <label className="label" htmlFor="mr-spec">Spec</label>
+              <textarea id="mr-spec" className="input" rows={2} placeholder="เช่น SD40 ยาว 10 ม. มอก.24" maxLength={500} value={v.spec} onChange={set("spec")} />
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-warn">การขอเบิก</h3>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div>
+                <label className="label" htmlFor="mr-unit">Unit *</label>
+                <input id="mr-unit" className="input" placeholder="เส้น / ถุง / คิว" maxLength={30} value={v.unit} onChange={set("unit")} />
+              </div>
+              <div>
+                <label className="label" htmlFor="mr-qty">Quantity *</label>
+                <input id="mr-qty" className="input text-right" type="number" min="0" step="any" value={v.quantity} onChange={set("quantity")} />
+              </div>
+              <div>
+                <label className="label" htmlFor="mr-sch">Require Schedule *</label>
+                <input id="mr-sch" className="input" type="date" value={v.require_schedule} onChange={set("require_schedule")} />
+              </div>
+            </div>
+            <div>
+              <label className="label" htmlFor="mr-remark">Remark</label>
+              <textarea id="mr-remark" className="input" rows={3} placeholder="เช่น ใช้งานฐานราก F1-F6" maxLength={1000} value={v.remark} onChange={set("remark")} />
+            </div>
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold">ไฟล์แนบ</h3>
+            {files.length > 0 && (
+              <ul className="space-y-1">
+                {files.map((f, i) => (
+                  <li key={`${f.name}-${i}`} className="flex items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-sm">
+                    <span>📎</span>
+                    <span className="flex-1 truncate">{f.name}</span>
+                    <span className="text-xs text-muted">{formatFileSize(f.size)}</span>
+                    <button type="button" className="text-xs text-bad hover:underline" disabled={pending} onClick={() => setFiles((list) => list.filter((_, j) => j !== i))}>เอาออก</button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <input ref={fileInputRef} type="file" multiple hidden onChange={(e) => pickFiles(e.target.files)} />
+            <button type="button" className="btn w-full border-dashed" disabled={pending} onClick={() => fileInputRef.current?.click()}>
+              📎 เลือกไฟล์ (แบบ, ใบเสนอราคา, รูป ฯลฯ — ไม่เกิน {formatFileSize(MAX_FILE_SIZE)} ต่อไฟล์)
+            </button>
+          </section>
+
+          {error && <p className="rounded-lg bg-bad-soft px-3 py-2 text-sm text-bad">{error}</p>}
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
+          <button type="button" className="btn" onClick={close} disabled={pending}>ยกเลิก</button>
+          <button className="btn btn-primary" disabled={pending}>{pending ? (files.length ? "กำลังอัปโหลดและบันทึก..." : "กำลังบันทึก...") : "บันทึก Request"}</button>
+        </div>
+      </form>
+    </dialog>
+  );
+}
+
+/** ลิงก์ไฟล์แนบของ Request */
+function FileLinks({ files }: { files: MaterialFile[] }) {
+  if (files.length === 0) return <span className="text-muted">–</span>;
+  return (
+    <ul className="space-y-0.5">
+      {files.map((f) => (
+        <li key={f.path} className="truncate">
+          <a href={f.url} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline" title={`${f.file_name} · ${formatFileSize(f.size)}`}>
+            📎 {f.file_name}
+          </a>
+        </li>
+      ))}
+    </ul>
   );
 }
 

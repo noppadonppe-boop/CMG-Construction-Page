@@ -3,13 +3,14 @@
 import { doc, runTransaction, serverTimestamp, updateDoc, type QueryDocumentSnapshot } from "firebase/firestore";
 import { db } from "../firebase/client";
 import type { Tone } from "../format";
-import { DataError, toIso } from "./common";
+import { DataError, deleteFiles, newId, toIso, uploadFile, type StoredFile } from "./common";
 import type { ProjectRecord } from "./projects";
 import { useProjectSection } from "./sections";
-import { projectRef, sectionCol } from "./paths";
+import { projectRef, sectionCol, storagePath } from "./paths";
 
 // Material Request ของโครงการ — 2 คอลเลกชันเชื่อมกันด้วย Request No.
 //   projects/{id}/material_requests/{auto}   รายการขอเบิก (เลขรันเก็บที่เอกสารโครงการ ฟิลด์ material_request_counter)
+//     ไฟล์แนบของ Request: Storage .../projects/{id}/material_requests/{docId}/{ไฟล์}
 //   projects/{id}/material_receipts/{auto}   การรับของแต่ละครั้ง — request_id ชี้ไปที่รายการขอเบิก
 // ยอดสะสม/สถานะไม่ได้เก็บ — คำนวณจากการรับของทุกครั้งตอนแสดงผล
 
@@ -21,6 +22,11 @@ export const materialApproval: Record<MaterialApproval, { label: string; tone: T
   rejected: { label: "Rejected", tone: "bad" },
 };
 
+export interface MaterialFile extends StoredFile {
+  file_name: string;
+  size: number;
+}
+
 export interface MaterialRequest {
   id: string;
   no: string;
@@ -31,6 +37,7 @@ export interface MaterialRequest {
   /** YYYY-MM-DD */
   require_schedule: string;
   remark: string;
+  files: MaterialFile[];
   created_at: string;
   created_by: string;
 }
@@ -48,7 +55,7 @@ export interface MaterialReceipt {
   created_by: string;
 }
 
-export type NewMaterialRequest = Omit<MaterialRequest, "id" | "no" | "created_at" | "created_by">;
+export type NewMaterialRequest = Omit<MaterialRequest, "id" | "no" | "files" | "created_at" | "created_by">;
 export type NewMaterialReceipt = Omit<MaterialReceipt, "id" | "created_at" | "created_by">;
 
 function toRequest(snap: QueryDocumentSnapshot): MaterialRequest {
@@ -62,6 +69,7 @@ function toRequest(snap: QueryDocumentSnapshot): MaterialRequest {
     quantity: Number(d.quantity ?? 0),
     require_schedule: d.require_schedule ?? "",
     remark: d.remark ?? "",
+    files: d.files ?? [],
     created_at: toIso(d.created_at),
     created_by: d.created_by ?? "",
   };
@@ -130,18 +138,31 @@ function requestNo(projectCode: string, n: number) {
   return ["MR", suffix, String(n).padStart(3, "0")].filter(Boolean).join("-");
 }
 
-/** เพิ่มรายการขอเบิก — ออกเลขรันใน transaction เดียวกับการบันทึก จึงไม่ได้เลขซ้ำแม้เพิ่มพร้อมกัน */
-export async function createMaterialRequest(projectId: string, input: NewMaterialRequest, actor: string): Promise<string> {
+/**
+ * เพิ่มรายการขอเบิก — อัปโหลดไฟล์แนบก่อน แล้วออกเลขรันใน transaction เดียวกับการบันทึก (ไม่ได้เลขซ้ำแม้เพิ่มพร้อมกัน)
+ * ถ้าบันทึกไม่สำเร็จ ลบไฟล์ที่อัปไปแล้วทิ้ง
+ */
+export async function createMaterialRequest(projectId: string, input: NewMaterialRequest, files: File[], actor: string): Promise<string> {
   const ref = doc(sectionCol(projectId, "material_requests"));
+  const uploaded: MaterialFile[] = [];
   let no = "";
-  await runTransaction(db(), async (tx) => {
-    const project = await tx.get(projectRef(projectId));
-    if (!project.exists()) throw new DataError("โครงการนี้ถูกลบไปแล้ว");
-    const n = Number(project.get("material_request_counter") ?? 0) + 1;
-    no = requestNo(project.get("code") ?? "", n);
-    tx.update(projectRef(projectId), { material_request_counter: n });
-    tx.set(ref, { ...input, no, created_at: serverTimestamp(), created_by: actor });
-  });
+  try {
+    for (const f of files) {
+      const stored = await uploadFile(storagePath(projectId, "material_requests", ref.id, `${newId()}-${f.name}`), f);
+      uploaded.push({ ...stored, file_name: f.name, size: f.size });
+    }
+    await runTransaction(db(), async (tx) => {
+      const project = await tx.get(projectRef(projectId));
+      if (!project.exists()) throw new DataError("โครงการนี้ถูกลบไปแล้ว");
+      const n = Number(project.get("material_request_counter") ?? 0) + 1;
+      no = requestNo(project.get("code") ?? "", n);
+      tx.update(projectRef(projectId), { material_request_counter: n });
+      tx.set(ref, { ...input, no, files: uploaded, created_at: serverTimestamp(), created_by: actor });
+    });
+  } catch (e) {
+    await deleteFiles(uploaded.map((u) => u.path));
+    throw e;
+  }
   return no;
 }
 

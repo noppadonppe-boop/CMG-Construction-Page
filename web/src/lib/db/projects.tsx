@@ -209,7 +209,7 @@ export async function deleteProject(id: string, code: string) {
   const [snaps, emailFiles] = await Promise.all([Promise.all(SECTIONS.map((s) => getDocs(sectionCol(id, s)))), emailSetupFiles(id)]);
   const docs = snaps.flatMap((s) => s.docs);
   const files = [
-    ...docs.flatMap((d) => [...((d.get("photos") ?? []) as StoredFile[]), ...((d.get("revisions") ?? []) as StoredFile[])]),
+    ...docs.flatMap((d) => (["photos", "revisions", "files"] as const).flatMap((f) => (d.get(f) ?? []) as StoredFile[])),
     ...emailFiles,
   ];
   const refs = [...docs.map((d) => d.ref), emailSetupRef(id), projectCodeRef(code), projectRef(id)];
