@@ -17,7 +17,8 @@ import { useAuth } from "../auth/context";
 import { db } from "../firebase/client";
 import type { ProgressSnapshot, Project, ProjectInput, ProjectSummary } from "../types";
 import { ConflictError, DataError, deleteFiles, toIso, type StoredFile } from "./common";
-import { projectCodeRef, projectRef, projectsCol, sectionCol, type ProjectSection } from "./paths";
+import { emailSetupFiles } from "./email-setup";
+import { emailSetupRef, projectCodeRef, projectRef, projectsCol, sectionCol, type ProjectSection } from "./paths";
 
 /** โครงการพร้อมข้อมูลสำหรับกันการบันทึกทับกัน */
 export interface ProjectRecord extends ProjectSummary {
@@ -205,13 +206,13 @@ export async function countProjectData(id: string) {
 
 /** ลบโครงการพร้อมข้อมูลทุกเมนูในโครงการ และไฟล์/รูปทั้งหมดใน Storage */
 export async function deleteProject(id: string, code: string) {
-  const snaps = await Promise.all(SECTIONS.map((s) => getDocs(sectionCol(id, s))));
+  const [snaps, emailFiles] = await Promise.all([Promise.all(SECTIONS.map((s) => getDocs(sectionCol(id, s)))), emailSetupFiles(id)]);
   const docs = snaps.flatMap((s) => s.docs);
-  const files = docs.flatMap((d) => [
-    ...((d.get("photos") ?? []) as StoredFile[]),
-    ...((d.get("revisions") ?? []) as StoredFile[]),
-  ]);
-  const refs = [...docs.map((d) => d.ref), projectCodeRef(code), projectRef(id)];
+  const files = [
+    ...docs.flatMap((d) => [...((d.get("photos") ?? []) as StoredFile[]), ...((d.get("revisions") ?? []) as StoredFile[])]),
+    ...emailFiles,
+  ];
+  const refs = [...docs.map((d) => d.ref), emailSetupRef(id), projectCodeRef(code), projectRef(id)];
   // batch หนึ่งเขียนได้ไม่เกิน 500 รายการ — ลบข้อมูลลูกก่อน ตัวโครงการอยู่ชุดสุดท้าย
   for (let i = 0; i < refs.length; i += 500) {
     const batch = writeBatch(db());
