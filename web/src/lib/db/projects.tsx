@@ -18,6 +18,7 @@ import { db } from "../firebase/client";
 import type { ProgressSnapshot, Project, ProjectInput, ProjectSummary } from "../types";
 import { ConflictError, DataError, deleteFiles, toIso, type StoredFile } from "./common";
 import { emailSetupFiles } from "./email-setup";
+import { materialRequestFiles } from "./materials";
 import { emailSetupRef, projectCodeRef, projectRef, projectsCol, sectionCol, type ProjectSection } from "./paths";
 
 /** โครงการพร้อมข้อมูลสำหรับกันการบันทึกทับกัน */
@@ -196,7 +197,7 @@ export async function updateProgress(id: string, progress: ProgressSnapshot[], e
   });
 }
 
-const SECTIONS: ProjectSection[] = ["daily_reports", "issues", "documents"];
+const SECTIONS: ProjectSection[] = ["daily_reports", "issues", "documents", "material_requests"];
 
 /** จำนวนข้อมูลที่จะถูกลบไปพร้อมโครงการ */
 export async function countProjectData(id: string) {
@@ -209,7 +210,7 @@ export async function deleteProject(id: string, code: string) {
   const [snaps, emailFiles] = await Promise.all([Promise.all(SECTIONS.map((s) => getDocs(sectionCol(id, s)))), emailSetupFiles(id)]);
   const docs = snaps.flatMap((s) => s.docs);
   const files = [
-    ...docs.flatMap((d) => [...((d.get("photos") ?? []) as StoredFile[]), ...((d.get("revisions") ?? []) as StoredFile[])]),
+    ...docs.flatMap((d) => [...((d.get("photos") ?? []) as StoredFile[]), ...((d.get("revisions") ?? []) as StoredFile[]), ...materialRequestFiles(d.data())]),
     ...emailFiles,
   ];
   const refs = [...docs.map((d) => d.ref), emailSetupRef(id), projectCodeRef(code), projectRef(id)];

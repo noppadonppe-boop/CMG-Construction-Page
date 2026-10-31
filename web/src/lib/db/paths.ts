@@ -14,6 +14,7 @@ import { db } from "../firebase/client";
 //          ├─ daily_reports / {YYYY-MM-DD}      รายงานประจำวัน (1 ฉบับ/วัน)
 //          ├─ issues / {auto}                   ปัญหา / ความปลอดภัย / RFI
 //          ├─ documents / {auto}                เอกสาร / แบบ + revision
+//          ├─ material_requests / {auto}        Material Request — ข้อมูลขอเบิก + การรับของทุกครั้งในเอกสารเดียว
 //          └─ email_setup / config              รายชื่อผู้รับ + เนื้อหาอีเมลรายงานประจำวัน
 //
 //   Storage: Cmg-Cons-Page-Claude/root/projects/{projectId}/{เมนู}/{docId}/{ไฟล์}
@@ -21,7 +22,7 @@ import { db } from "../firebase/client";
 
 export const APP_NAME = "Cmg-Cons-Page-Claude";
 
-export type ProjectSection = "daily_reports" | "issues" | "documents";
+export type ProjectSection = "daily_reports" | "issues" | "documents" | "material_requests";
 
 export const rootRef = () => doc(db(), APP_NAME, "root");
 export const appMetaRef = () => doc(rootRef(), "appMeta", "config");

@@ -10,6 +10,9 @@ import { useCurrentProjectId } from "@/lib/project-context";
 import { EmptyState, PageHeader, Skeleton } from "@/components/ui";
 import { LinkCard } from "../../menus/link-card";
 
+/** เมนูที่มีปุ่มเปิด Material Request form — จับจากชื่อเมนู */
+const isMaterialMenu = (name: string) => /material\s*request/i.test(name);
+
 /** หน้าแสดงเมนูสำหรับผู้ใช้ทั่วไป — การเพิ่ม/ลบ/แก้ ทำที่หน้า "จัดการ Cards" (/menus) */
 export default function CustomMenuPage() {
   return (
@@ -37,13 +40,21 @@ function CustomMenu() {
     return <EmptyState>{projectId ? "เมนูนี้ไม่ได้แสดงในโครงการนี้" : "เมนูนี้แสดงเฉพาะในบางโครงการ — เลือกโครงการก่อน"}</EmptyState>;
 
   const cards = menu.cards.filter((c) => cardVisibleIn(menu, c, projectId));
+  const showMaterial = !!projectId && isMaterialMenu(menu.name);
   const manageHref = `/menus?menu=${menu.id}${projectId ? `&scope=${projectId}` : ""}`;
   return (
     <>
       <PageHeader
         title={`${menu.emoji && !menu.icon ? menu.emoji + " " : ""}${menu.name}`}
         subtitle={`${cards.length} Cards`}
-        actions={can("menu.manage") && <Link href={manageHref} className="btn">จัดการ Cards</Link>}
+        actions={
+          <>
+            {showMaterial && (
+              <Link href={`/m/${menu.id}/material-request?project=${projectId}`} className="btn btn-primary">📦 Material Request form</Link>
+            )}
+            {can("menu.manage") && <Link href={manageHref} className="btn">จัดการ Cards</Link>}
+          </>
+        }
       />
       {cards.length === 0 ? (
         <EmptyState>
