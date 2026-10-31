@@ -44,6 +44,7 @@ export type Permission =
   | "material.request" // เพิ่มรายการขอเบิกวัสดุ
   | "material.receive" // บันทึกรับของ
   | "material.approve" // เปลี่ยนผล Material Approve ของการรับของ
+  | "material.delete" // ลบ Request / การรับของ — เฉพาะ MasterAdmin
   | "report.view"
   | "report.export"
   | "form.manage" // จัดการคลังมาตรฐานแบบฟอร์มกลาง (เพิ่ม/แก้/ลบ/อัปโหลด)
@@ -72,7 +73,7 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[] | "all"> = {
 };
 
 const ALL_PERMISSIONS = new Set<Permission>(
-  Object.values(ROLE_PERMISSIONS).flatMap((p) => (p === "all" ? [] : p)).concat("user.manage", "menu.manage"),
+  Object.values(ROLE_PERMISSIONS).flatMap((p) => (p === "all" ? [] : p)).concat("user.manage", "menu.manage", "material.delete"),
 );
 
 /** สิทธิ์รวมของทุก role */
