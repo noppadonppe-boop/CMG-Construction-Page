@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth/context";
 import { useDailyReports } from "@/lib/db/daily";
@@ -11,24 +12,34 @@ import { Guard, NoProjects } from "@/components/guard";
 import { formatDate, weatherLabel } from "@/lib/format";
 import { EmptyState, PageHeader, Pill, Skeleton } from "@/components/ui";
 import { PhotoGallery } from "@/components/photo-gallery";
+import { EmailSetupDialog } from "./email-setup-dialog";
 
 export default function DailyReportsPage() {
   const { can } = useAuth();
   const projectId = useSearchParams().get("project");
+  const { projects: all } = useProjects();
+  const projects = projectId ? all.filter((p) => p.id === projectId) : all;
+  const [emailSetupOpen, setEmailSetupOpen] = useState(false);
   return (
     <>
       <PageHeader
         title="รายงานประจำวัน (Site Diary)"
         subtitle={`บันทึกงานหน้างานรายวัน${projectId ? "ของโครงการนี้" : "ของโครงการที่คุณได้รับมอบหมาย"} · อัปเดตอัตโนมัติ`}
         actions={
-          can("daily.create") && (
-            <Link href={projectId ? dailyReportHref(projectId) : "/daily-reports/new"} className="btn btn-primary">+ เขียนรายงาน</Link>
-          )
+          <>
+            {can("project.edit") && projects.length > 0 && (
+              <button type="button" className="btn" onClick={() => setEmailSetupOpen(true)}>✉️ Setup Email</button>
+            )}
+            {can("daily.create") && (
+              <Link href={projectId ? dailyReportHref(projectId) : "/daily-reports/new"} className="btn btn-primary">+ เขียนรายงาน</Link>
+            )}
+          </>
         }
       />
       <Guard permission="daily.view">
         <ReportList projectId={projectId} />
       </Guard>
+      {emailSetupOpen && <EmailSetupDialog projects={projects} onClose={() => setEmailSetupOpen(false)} />}
     </>
   );
 }
