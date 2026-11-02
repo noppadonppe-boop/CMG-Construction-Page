@@ -39,6 +39,8 @@ export interface MenuCard extends IconFields {
   url: string;
   description: string;
   active: boolean;
+  /** เปิดลิงก์ในแท็บใหม่หรือแท็บนี้ (ข้อมูลเดิมไม่มีค่า = แท็บใหม่) */
+  open_in: "new" | "same";
   w: number;
   h: number;
   /** [] = ตามเมนู */
@@ -81,6 +83,7 @@ function toCard(c: Partial<MenuCard>): MenuCard {
     icon: toIcon(c.icon),
     color: c.color ?? CARD_COLORS[0],
     active: Boolean(c.active),
+    open_in: c.open_in === "same" ? "same" : "new",
     w: clamp(c.w, 1, GRID_COLS, 2),
     h: clamp(c.h, 2, MAX_ROWS, 5),
     project_ids: toIds(c.project_ids),

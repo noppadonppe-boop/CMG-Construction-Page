@@ -34,7 +34,7 @@ export function LinkCard({ card, tools }: { card: MenuCard; tools?: ReactNode })
 
   const cls = "card relative flex h-full flex-col items-center justify-center gap-1.5 overflow-hidden p-3 text-center transition";
   return href && !tools ? (
-    <a href={href} target="_blank" rel="noopener noreferrer" style={style} className={`${cls} hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md`}>
+    <a href={href} {...(card.open_in === "same" ? {} : { target: "_blank", rel: "noopener noreferrer" })} style={style} className={`${cls} hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md`}>
       {body}
     </a>
   ) : (

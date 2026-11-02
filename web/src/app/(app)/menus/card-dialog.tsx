@@ -17,7 +17,7 @@ export function CardDialog({ menu, card, onClose }: { menu: CustomMenu; card?: M
   const { userProfile } = useAuth();
   const { projects, byId } = useProjects();
   const [v, setV] = useState<CardInput>(
-    card ?? { name: "", url: "", description: "", emoji: "", glyph: "globe", icon: null, color: CARD_COLORS[0], active: false, w: 2, h: 5, project_ids: [] },
+    card ?? { name: "", url: "", description: "", emoji: "", glyph: "globe", icon: null, color: CARD_COLORS[0], active: false, open_in: "new", w: 2, h: 5, project_ids: [] },
   );
   const [limited, setLimited] = useState(v.project_ids.length > 0);
   // Card เลือกได้เฉพาะโครงการที่เมนูแสดง (เมนูทุกโครงการ = เลือกได้ทุกโครงการ)
@@ -69,6 +69,17 @@ export function CardDialog({ menu, card, onClose }: { menu: CustomMenu; card?: M
           inputMode="url"
         />
         <p className="mt-1 text-xs text-muted">ใส่ # ถ้ายังไม่มี URL</p>
+      </div>
+      <div>
+        <div className="label">เมื่อกด Card</div>
+        <div className="flex gap-2">
+          {([["new", "เปิดแท็บใหม่"], ["same", "เปิดในแท็บนี้"]] as const).map(([value, label]) => (
+            <label key={value} className={`flex flex-1 cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm ${v.open_in === value ? "border-primary bg-primary-soft font-semibold text-primary" : "border-border hover:bg-surface-2"}`}>
+              <input type="radio" name="card-open-in" checked={v.open_in === value} onChange={() => set({ open_in: value })} />
+              {label}
+            </label>
+          ))}
+        </div>
       </div>
       <div>
         <label className="label" htmlFor="card-desc">คำอธิบาย</label>
