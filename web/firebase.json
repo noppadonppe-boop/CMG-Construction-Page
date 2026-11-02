@@ -1,4 +1,5 @@
 {
+  "functions": [{ "source": "mail-functions", "codebase": "smtp-mail", "ignore": ["node_modules", ".git", "*.log"], "predeploy": ["npm --prefix \"$RESOURCE_DIR\" run build"] }],
   "firestore": {
     "rules": "firebase/firestore.rules",
     "indexes": "firebase/firestore.indexes.json"
@@ -33,6 +34,7 @@
       }
     ],
     "rewrites": [
+      { "source": "/api/**", "function": { "functionId": "smtpMail", "region": "asia-southeast1" } },
       {
         "source": "/daily-reports/*/*/edit",
         "destination": "/daily-reports/_/_/edit.html"

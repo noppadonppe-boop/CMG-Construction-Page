@@ -15,6 +15,7 @@ import { db } from "../firebase/client";
 //          ├─ issues / {auto}                   ปัญหา / ความปลอดภัย / RFI
 //          ├─ documents / {auto}                เอกสาร / แบบ + revision
 //          └─ email_setup / config              รายชื่อผู้รับ + เนื้อหาอีเมลรายงานประจำวัน
+//     └─ mail / {auto}                           คิวอีเมลสำหรับ Firebase Trigger Email extension
 //
 //   Storage: Cmg-Cons-Page-Claude/root/projects/{projectId}/{เมนู}/{docId}/{ไฟล์}
 //            Cmg-Cons-Page-Claude/root/menus/icons/{ไฟล์}   ไอคอนรูปภาพของเมนู / Card / ลิงก์
@@ -39,6 +40,7 @@ export const projectsCol =() => collection(rootRef(), "projects");
 export const projectRef = (projectId: string) => doc(projectsCol(), projectId);
 export const sectionCol = (projectId: string, section: ProjectSection) => collection(projectRef(projectId), section);
 export const emailSetupRef = (projectId: string) => doc(projectRef(projectId), "email_setup", "config");
+export const emailOutboxCol = () => collection(rootRef(), "mail");
 
 export const storagePath = (projectId: string, section: ProjectSection, docId: string, fileName: string) =>
   `${APP_NAME}/root/projects/${projectId}/${section}/${docId}/${fileName}`;

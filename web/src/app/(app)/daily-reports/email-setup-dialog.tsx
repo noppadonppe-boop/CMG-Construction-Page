@@ -221,13 +221,14 @@ export function EmailSetupDialog({ projects, onClose }: { projects: ProjectRecor
                   <div className="space-y-1.5 text-sm">
                     <label className="flex items-center gap-2">
                       <input type="checkbox" checked={v.attach_report_pdf} onChange={(e) => set({ attach_report_pdf: e.target.checked })} />
-                      แนบ PDF รายงานประจำวัน
+                      แนบลิงก์รายงานสำหรับเปิด/พิมพ์เป็น PDF
                     </label>
                     <label className="flex items-center gap-2">
                       <input type="checkbox" checked={v.attach_photos} onChange={(e) => set({ attach_photos: e.target.checked })} />
                       แนบรูปถ่ายหน้างาน
                     </label>
                   </div>
+                  <p className="mt-1 text-xs text-muted">ไฟล์เพิ่มเติมที่อัปโหลดไว้จะถูกแนบทุกครั้ง ส่วนรูปถ่ายจะถูกแนบเมื่อเลือกตัวเลือกด้านบน</p>
                   {(v.files.length > 0 || newFiles.length > 0) && (
                     <ul className="mt-2 space-y-1">
                       {v.files.map((f) => (

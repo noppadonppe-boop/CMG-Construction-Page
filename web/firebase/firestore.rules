@@ -32,12 +32,38 @@ service cloud.firestore {
       return hasApprovedRole(['MasterAdmin']);
     }
 
+    function canUseProject(projectId) {
+      return isApprovedAdmin()
+        || (me().assignedProjects is list && me().assignedProjects.hasAny([projectId]));
+    }
+
+    function validMailRequest() {
+      return request.resource.data.kind == 'daily_report'
+        && request.resource.data.project_id is string
+        && request.resource.data.report_date is string
+        && request.resource.data.created_by == request.auth.token.email.lower()
+        && request.resource.data.created_at == request.time
+        && request.resource.data.to is list
+        && request.resource.data.to.size() > 0
+        && request.resource.data.to.size() <= 20
+        && (!('cc' in request.resource.data) || (request.resource.data.cc is list && request.resource.data.cc.size() <= 20))
+        && request.resource.data.message is map
+        && request.resource.data.message.subject is string
+        && request.resource.data.message.subject.size() > 0
+        && request.resource.data.message.subject.size() <= 500
+        && request.resource.data.message.text is string
+        && request.resource.data.message.text.size() <= 100000
+        && request.resource.data.message.html is string
+        && request.resource.data.message.html.size() <= 200000
+        && exists(/databases/$(database)/documents/Cmg-Cons-Page-Claude/root/projects/$(request.resource.data.project_id));
+    }
+
     match /Cmg-Cons-Page-Claude/root {
       allow read, write: if signedIn();
 
       match /{col}/{rest=**} {
         allow read: if signedIn();
-        allow write: if signedIn() && !(col in ['menus', 'formStandards']);
+        allow write: if signedIn() && !(col in ['menus', 'formStandards', 'mail']);
       }
 
       match /menus/{menuId} {
@@ -46,6 +72,14 @@ service cloud.firestore {
 
       match /formStandards/{formId} {
         allow write: if isApprovedAdmin();
+      }
+
+      match /mail/{mailId} {
+        allow create: if hasApprovedRole(['MasterAdmin', 'Admin', 'ProjectManager', 'Engineer'])
+          && canUseProject(request.resource.data.project_id)
+          && validMailRequest();
+        allow read: if isApprovedAdmin();
+        allow update, delete: if isApprovedAdmin();
       }
     }
   }

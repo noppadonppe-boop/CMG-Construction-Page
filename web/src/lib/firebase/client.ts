@@ -32,5 +32,11 @@ export function auth(): Auth {
   return authInstance;
 }
 
+export async function currentUserIdToken(): Promise<string> {
+  const user = auth().currentUser;
+  if (!user) throw new Error("กรุณาเข้าสู่ระบบก่อนส่งอีเมล");
+  return user.getIdToken();
+}
+
 export const db = () => getFirestore(firebaseApp());
 export const storage = () => getStorage(firebaseApp());

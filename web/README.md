@@ -123,6 +123,40 @@ npm run migrate:dcr -- --apply        # แปลงรายงานประ�
 - **รายงาน A4** (`/daily-reports/{projectId}/{date}`): แถบโลโก้ 4 กลุ่ม, ตารางตามมาตรฐาน, ช่องลงนาม 3 ช่อง, ภาคผนวกรูปถ่าย, พิมพ์/บันทึก PDF
 - **สถานะ:** ร่าง → ส่งตรวจ (ผู้จัดทำ) → ตรวจแล้ว → รับทราบ (ผู้มีสิทธิ์แก้โครงการ) · ตีกลับแก้ไขได้ (ล้างลายเซ็นตรวจ/รับทราบ)
 
+## การส่งอีเมลจากอีเมลกลาง
+
+ระบบใช้ backend แบบเดียวกับ `cmg-leave-app`: หน้าเว็บสร้างข้อความและเรียก backend, ส่วน backend เป็นผู้ถือ SMTP credentials และเรียก `nodemailer.sendMail()`:
+
+```text
+ผู้ใช้กด “ส่งอีเมล”
+  → เว็บเรียก POST /api/send-email
+  → web/server สร้าง SMTP transporter จาก .env
+  → SMTP ของผู้ให้บริการอีเมล
+  → ผู้รับใน Setup Email
+```
+
+### ตั้งค่าการเชื่อมต่อครั้งแรก
+
+1. คัดลอก `web/.env.example` เป็น `web/.env` แล้วใส่ค่า Firebase และ SMTP จริง (`SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`) โดยห้ามใช้ชื่อ `NEXT_PUBLIC_` กับค่าลับ พร้อมตั้งค่า Firebase Admin อย่างใดอย่างหนึ่ง (`GOOGLE_APPLICATION_CREDENTIALS` หรือ `FIREBASE_ADMIN_*`) เพื่อให้ backend ตรวจสิทธิ์ผู้ใช้ได้
+2. เปิด terminal แรกที่โฟลเดอร์ `web` แล้วรัน frontend:
+
+   ```bash
+   npm run dev
+   ```
+
+3. เปิด terminal ที่สองในโฟลเดอร์ `web` แล้วรัน SMTP backend:
+
+   ```bash
+   npm run backend:dev
+   ```
+
+4. ตรวจการเชื่อมต่อได้ที่ `http://localhost:3001/health` ต้องตอบ `{"ok":true,"mailer":"ready"}`
+5. ในระบบเปิด `Daily Reports → Setup Email` เพิ่มผู้รับ แล้วเปิดรายงานที่ต้องการและกด `✉️ ส่งอีเมล`
+
+ใน production ต้อง deploy `web/server` เป็น Node service ที่เข้าถึง SMTP ได้ และตั้ง `NEXT_PUBLIC_MAIL_API_URL` ในตอน build ของ static frontend ให้ชี้ไปยัง URL ของ service นั้น พร้อมตั้ง `FRONTEND_APP_URL` ให้ตรงกับโดเมนเว็บเพื่อให้ CORS อนุญาต
+
+อีเมลที่ส่งยังใช้ข้อมูล `subject`, `text`, `html` และไฟล์แนบที่ระบบสร้างจาก Setup Email คุณสามารถแก้ template ได้ที่ `src/lib/db/email-outbox.ts` โดยไม่ต้องแก้ส่วน SMTP
+
 ## โครงสร้างโค้ด
 
 ```

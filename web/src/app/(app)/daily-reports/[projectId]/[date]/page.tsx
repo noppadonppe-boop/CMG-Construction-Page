@@ -6,6 +6,8 @@ import { useState } from "react";
 import { displayName, useAuth } from "@/lib/auth/context";
 import { DCR_STATUS_LABEL, type DcrStatus } from "@/lib/dcr";
 import { setDcrStatus, useDcr, useDcrSettings } from "@/lib/db/dcr";
+import { loadEmailSetup } from "@/lib/db/email-setup";
+import { sendDailyReportEmail } from "@/lib/db/email-outbox";
 import { useProjects } from "@/lib/db/projects";
 import { firebaseErrorMessage } from "@/lib/firebase/errors";
 import { formatDate } from "@/lib/format";
@@ -32,6 +34,8 @@ function DcrView() {
   const { settings } = useDcrSettings(project?.id, project?.client ?? null);
   const { report: r, loading: loadingReport } = useDcr(project?.id, date, settings);
   const [error, setError] = useState<string>();
+  const [emailNotice, setEmailNotice] = useState<string>();
+  const [emailPending, setEmailPending] = useState(false);
   const [pending, run] = useSubmitOnce();
   // ภาษาที่ผู้ดูเลือก — ยังไม่เลือก = ภาษาเริ่มต้นของโครงการ
   const [picked, setPicked] = useState<ReportLang | null>(null);
@@ -52,6 +56,7 @@ function DcrView() {
 
   const canReview = can("project.edit");
   const editable = r.status === "draft" || r.status === "submitted";
+  const canSendEmail = can("daily.create") || can("report.export");
 
   const act = (status: DcrStatus) =>
     run(async () => {
@@ -63,6 +68,22 @@ function DcrView() {
         setError(firebaseErrorMessage(e));
       }
     });
+
+  const sendEmail = async () => {
+    if (!userProfile || emailPending) return;
+    setEmailPending(true);
+    setEmailNotice(undefined);
+    setError(undefined);
+    try {
+      const setup = await loadEmailSetup(project.id);
+      const result = await sendDailyReportEmail({ project, settings, report: r, date, setup });
+      setEmailNotice(`ส่งอีเมลสำเร็จแล้ว (${result.recipients} ผู้รับ)`);
+    } catch (e) {
+      setError(`ส่งอีเมลไม่สำเร็จ: ${firebaseErrorMessage(e)}`);
+    } finally {
+      setEmailPending(false);
+    }
+  };
 
   return (
     <article>
@@ -93,10 +114,12 @@ function DcrView() {
           {canReview && r.status === "submitted" && <button className="btn" disabled={pending} onClick={() => act("reviewed")}>✓ ตรวจแล้ว</button>}
           {canReview && r.status === "reviewed" && <button className="btn" disabled={pending} onClick={() => act("acknowledged")}>บันทึกการรับทราบ</button>}
           {canReview && r.status !== "draft" && !r.legacy && <button className="btn text-bad" disabled={pending} onClick={() => act("draft")}>ตีกลับแก้ไข</button>}
+          {canSendEmail && <button className="btn" disabled={emailPending} onClick={sendEmail}>{emailPending ? "กำลังส่ง..." : "✉️ ส่งอีเมล"}</button>}
           <PrintButton />
         </div>
       </div>
       {error && <p className="mb-3 rounded-lg bg-bad-soft px-3 py-2 text-bad print:hidden">{error}</p>}
+      {emailNotice && <p className="mb-3 rounded-lg bg-ok-soft px-3 py-2 text-ok print:hidden">{emailNotice}</p>}
 
       <DcrDocument project={project} settings={settings} r={r} date={date} lang={lang} />
     </article>
