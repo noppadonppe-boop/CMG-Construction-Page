@@ -17,6 +17,7 @@ import {
 import type { Project } from "@/lib/types";
 import { sectionLetters, type DailySectionKey } from "@/lib/daily-report-standard";
 import { DCR_TEXT, reportLocale, translateValue, type ReportLang } from "@/lib/dcr-i18n";
+import { layoutVariables } from "@/lib/dcr-layout-variables";
 import { LayoutPaper, SlotContent, slotBox } from "@/components/dcr-layout-page";
 
 type Text = (typeof DCR_TEXT)[ReportLang];
@@ -39,6 +40,7 @@ export function DcrDocument({ project, settings, r, date, lang = "th" }: { proje
   const photos = r.progress.flatMap((p, i) => p.photos.map((ph, j) => ({ ...ph, label: `${i + 1}.${j + 1}`, zone: p.zone })));
   const L = sectionLetters(r.form_standard?.sections);
   const code = r.report_no ? reportDocNo(r, project.code) : "—";
+  const variables = layoutVariables(r, { project_name: settings.project_name || project.name, project_no: settings.project_no || project.code, client: settings.client.name || project.client || "", consultant: consultants.map(c => c.name).join(", "), contractor: settings.contractor.name, subcontractors: subs.map(s => s.name).join(", "), location: project.location ?? "", doc_no: code });
   const fmt = (n: number) => n.toLocaleString(reportLocale(lang));
   const head = (key: DailySectionKey) => ({ title: t.sections[key].title, en: t.sections[key].sub });
 
@@ -271,7 +273,7 @@ export function DcrDocument({ project, settings, r, date, lang = "th" }: { proje
         >
           {page.slots.map((s) => (
             <div key={s.id} style={slotBox(s)}>
-              <SlotContent slot={s} />
+              <SlotContent slot={s} variableValue={variables.find(v => v.key === s.variable)?.value} />
             </div>
           ))}
         </LayoutPaper>

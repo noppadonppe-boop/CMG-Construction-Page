@@ -32,7 +32,8 @@ import {
   type HeadcountRow,
   type Photo,
 } from "@/lib/dcr";
-import { ConflictError, DataError } from "@/lib/db/common";
+import { ConflictError, DataError, uploadFile } from "@/lib/db/common";
+import { storagePath } from "@/lib/db/paths";
 import {
   deleteLayoutTemplate,
   previousReport,
@@ -52,8 +53,9 @@ import { useSubmitOnce } from "@/lib/use-submit-once";
 import { compress } from "@/components/photo-picker";
 import { CompanyLogo } from "@/components/company-logo";
 import { ConflictNotice } from "@/components/conflict-notice";
-import { DAILY_REPORT_STANDARD_SECTIONS, sectionLetters, type DailyReportStandardSnapshot } from "@/lib/daily-report-standard";
-import { LayoutEditor, type FreshImage } from "./layout-editor";
+import { sectionLetters, type DailyReportStandardSnapshot } from "@/lib/daily-report-standard";
+import { layoutVariables } from "@/lib/dcr-layout-variables";
+import { LayoutEditor } from "./layout-editor";
 
 type NewPhoto = { id: string; file: File; preview: string; caption: string };
 
@@ -89,8 +91,6 @@ export function DcrForm({
   const [newPhotos, setNewPhotos] = useState<Record<string, NewPhoto[]>>({});
   const [removedPaths, setRemovedPaths] = useState<string[]>([]);
   const [photoBusy, setPhotoBusy] = useState(false);
-  // H: รูปใหม่ของช่อง (slotId → ไฟล์) อัปโหลดตอนบันทึกรายงาน · แม่แบบจัดหน้าของโครงการ
-  const [layoutImages, setLayoutImages] = useState<Record<string, FreshImage>>({});
   const [layoutBusy, setLayoutBusy] = useState(false);
   const [templateBusy, setTemplateBusy] = useState(false);
   const { layouts } = useLayoutTemplates(project.id);
@@ -237,14 +237,11 @@ export function DcrForm({
           actor: userProfile.email,
           force,
           newPhotos: Object.fromEntries(Object.entries(newPhotos).map(([id, list]) => [id, list.map((p) => ({ file: p.file, caption: p.caption }))])),
-          newLayoutImages: Object.fromEntries(Object.entries(layoutImages).map(([id, img]) => [id, img.file])),
           removedPaths,
           projectCode: settings.project_no || project.code,
         });
         Object.values(newPhotos).flat().forEach((p) => URL.revokeObjectURL(p.preview));
         setNewPhotos({});
-        Object.values(layoutImages).forEach((img) => URL.revokeObjectURL(img.preview));
-        setLayoutImages({});
         setRemovedPaths([]);
         setData((d) => ({ ...d, report_no: result.reportNo, doc_no: result.docNo, progress: result.progress, layout_pages: result.layoutPages, form_standard: dataToSave.form_standard }));
         setBaseVersion(result.version);
@@ -306,32 +303,20 @@ export function DcrForm({
   const setItem = (itemId: string, patch: Partial<DcrData["progress"][number]>) =>
     update((d) => ({ ...d, progress: d.progress.map((x) => (x.id === itemId ? { ...x, ...patch } : x)) }));
 
-  // ── H: รูปของช่อง — รูปเดิมที่ถูกแทน/เอาออก ลบจาก Storage หลังบันทึกสำเร็จ ──
-  function dropLayoutImages(slots: LayoutSlot[]) {
-    const saved = slots.flatMap((s) => (s.image?.path ? [s.image.path] : []));
-    if (saved.length) setRemovedPaths((r) => [...r, ...saved]);
-    setLayoutImages((m) => {
-      const next = { ...m };
-      for (const s of slots) {
-        if (next[s.id]) URL.revokeObjectURL(next[s.id].preview);
-        delete next[s.id];
-      }
-      return next;
-    });
-  }
+  // รูปจัดหน้าอาจถูกอ้างอิงโดยหลายรายงานและแม่แบบ จึงไม่ลบไฟล์เมื่อเอาออกจากช่อง
+  function dropLayoutImages(_slots: LayoutSlot[]) { void _slots; }
   async function pickLayoutImage(slotId: string, f: File) {
     if (!f.type.startsWith("image/")) return setError("ไฟล์ที่เลือกไม่ใช่รูปภาพ");
     setLayoutBusy(true);
     try {
       const file = await compress(f);
-      const slot = data.layout_pages.flatMap((p) => p.slots).find((s) => s.id === slotId);
-      if (slot) dropLayoutImages([slot]);
-      update((d) => ({ ...d, layout_pages: d.layout_pages.map((p) => ({ ...p, slots: p.slots.map((s) => (s.id === slotId ? { ...s, image: null } : s)) })) }));
-      setLayoutImages((m) => ({ ...m, [slotId]: { file, preview: URL.createObjectURL(file) } }));
-    } catch {
-      setError("อ่านรูปไม่สำเร็จ — ลองไฟล์ JPG หรือ PNG");
+      const image = await uploadFile(storagePath(project.id, "daily_reports", "layout-images", "layout-" + crypto.randomUUID() + ".jpg"), file);
+      update((d) => ({ ...d, layout_pages: d.layout_pages.map((p) => ({ ...p, slots: p.slots.map((s) => (s.id === slotId ? { ...s, image } : s)) })) }));
+    } catch (e) {
+      setError("อัปโหลดรูปไม่สำเร็จ: " + firebaseErrorMessage(e));
+    } finally {
+      setLayoutBusy(false);
     }
-    setLayoutBusy(false);
   }
   const setLayoutPages = (fn: (pages: LayoutPage[]) => LayoutPage[]) => update((d) => ({ ...d, layout_pages: fn(d.layout_pages) }));
   function applyTemplate(id: string, mode: "replace" | "append") {
@@ -368,10 +353,6 @@ export function DcrForm({
   const appliedStandard = data.form_standard ?? standard;
   // หัวข้อที่มาตรฐานเปิดใช้ + ตัวอักษรที่เรียงใหม่
   const L = sectionLetters(appliedStandard?.sections);
-  const nav = [
-    ...DAILY_REPORT_STANDARD_SECTIONS.filter((s) => L[s.key]).map((s) => ({ id: s.key, letter: L[s.key]!, title: s.title })),
-    { id: "signoff", letter: "✓", title: "ลงนามและส่ง" },
-  ];
   const docLabel = data.report_no ? reportDocNo(data, project.code) : null;
   const nextDocNo = formatDocNo(settings.doc_format, project.code, settings.report_counter + 1);
   const itemLabel = (i: number) => {
@@ -393,7 +374,7 @@ export function DcrForm({
   }, [layouts]);
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_190px]">
+    <div>
       <div className="min-w-0 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap gap-2">
@@ -427,7 +408,7 @@ export function DcrForm({
           </div>
         )}
 
-        <fieldset disabled={locked} className="space-y-3">
+        <fieldset disabled={locked || layoutBusy} className="space-y-3">
           {/* A. ข้อมูลโครงการ */}
           <Section letter="A" title="ข้อมูลโครงการ" en="Project information" id="dcr-sec-project">
             {[settings.client, settings.contractor, ...subsToday].some((c) => c.logo) && (
@@ -747,12 +728,13 @@ export function DcrForm({
           {/* H. เอกสารแนบแบบจัดหน้า */}
           {L.layout && (<Section letter={L.layout} title="เอกสารแนบ (จัดหน้า)" en="Attachment pages" hint={data.layout_pages.length ? `${data.layout_pages.length} หน้า` : undefined} id="dcr-sec-layout">
             <LayoutEditor
+              variables={layoutVariables(data, { ...head, subcontractors: head.subcontractors.filter(s => data.subcontractors_today.includes(s.id)).map(s => s.name).join(", "), location: project.location ?? "", doc_no: docLabel ?? nextDocNo })}
               pages={data.layout_pages}
               onChange={setLayoutPages}
               letter={L.layout}
               docNo={docLabel ?? nextDocNo}
               locked={locked}
-              fresh={layoutImages}
+              fresh={{}}
               imageBusy={layoutBusy}
               onPickImage={pickLayoutImage}
               onDropImages={dropLayoutImages}
@@ -778,24 +760,13 @@ export function DcrForm({
             <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
               <span className="mr-auto text-xs text-muted">ส่งตรวจแล้วจะลงชื่อ “จัดทำโดย” ให้อัตโนมัติ</span>
               {data.report_no > 0 && <Link href={`/daily-reports/${project.id}/${data.report_date}`} className="btn">ดูตัวอย่างก่อนพิมพ์</Link>}
-              <button type="button" className="btn" disabled={pending} onClick={() => save(false)}>{pending ? "กำลังบันทึก..." : "บันทึกร่าง"}</button>
-              <button type="button" className="btn btn-primary" disabled={pending} onClick={() => save(true)}>ส่งให้ PM ตรวจ</button>
+              <button type="button" className="btn" disabled={pending || layoutBusy} onClick={() => save(false)}>{pending ? "กำลังบันทึก..." : "บันทึกร่าง"}</button>
+              <button type="button" className="btn btn-primary" disabled={pending || layoutBusy} onClick={() => save(true)}>ส่งให้ PM ตรวจ</button>
             </div>
           )}
         </Section>
       </div>
 
-      {/* สารบัญข้างฟอร์ม (จอใหญ่) */}
-      <nav className="hidden lg:block" aria-label="ส่วนของรายงาน">
-        <div className="sticky top-20 space-y-0.5 text-sm">
-          {nav.map(({ id, letter, title }) => (
-            <button key={id} type="button" className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-muted hover:bg-surface-2 hover:text-text" onClick={() => document.getElementById(`dcr-sec-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" })}>
-              <span className="grid size-5 shrink-0 place-items-center rounded bg-primary-soft text-[11px] font-bold text-primary">{letter}</span>
-              {title}
-            </button>
-          ))}
-        </div>
-      </nav>
     </div>
   );
 }

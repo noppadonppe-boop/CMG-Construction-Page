@@ -2,6 +2,7 @@
 // ตำแหน่ง/ขนาดช่องเก็บเป็น % ของพื้นที่ Body ของหน้า จึงแสดงได้ทุกขนาดจอและพิมพ์ได้ตรงขนาดกระดาษ
 
 import type { StoredImage } from "./dcr";
+import { normalizeTextMarks, type TextMark } from "./dcr-text-format.ts";
 
 export const PAPER_SIZES = ["A4", "A3"] as const;
 export type PaperSize = (typeof PAPER_SIZES)[number];
@@ -17,12 +18,18 @@ export function paperMm(size: PaperSize, orientation: Orientation) {
   return orientation === "portrait" ? p : { w: p.h, h: p.w };
 }
 
-export const SLOT_KINDS = { text: "ข้อความ", image: "รูปภาพ", table: "ตาราง", custom: "Custom style" } as const;
+export const SLOT_KINDS = { text: "ข้อความ", image: "รูปภาพ", table: "ตาราง", calendar: "ปฏิทิน", custom: "Custom style" } as const;
 export type SlotKind = keyof typeof SLOT_KINDS;
 export const CUSTOM_STYLES = { caption: "รูป + คำบรรยาย", sign: "ช่องลงนาม", note: "กล่องหมายเหตุ" } as const;
 export type CustomStyle = keyof typeof CUSTOM_STYLES;
 export const TEXT_SIZES = { s: "เล็ก", m: "กลาง", l: "ใหญ่" } as const;
 export type TextSize = keyof typeof TEXT_SIZES;
+/** แบบอักษรสำหรับกล่องข้อความ — ใช้ชื่อที่มี fallback ภาษาไทย */
+export const TEXT_FONTS = { default: "ค่าเริ่มต้น", sans: "Arial / sans-serif", serif: "Georgia / serif", tahoma: "Tahoma", monospace: "Monospace" } as const;
+export type TextFont = keyof typeof TEXT_FONTS;
+export const TEXT_FONT_FAMILIES: Record<TextFont, string> = {
+  default: "var(--font-sans)", sans: "Arial, Tahoma, sans-serif", serif: "Georgia, Tahoma, serif", tahoma: "Tahoma, sans-serif", monospace: "monospace",
+};
 /** ขนาดตัวอักษรเป็นมม. บนกระดาษจริง (≈ 7.5 / 9 / 12 pt) */
 export const TEXT_SIZE_MM: Record<TextSize, number> = { s: 2.6, m: 3.2, l: 4.2 };
 export type Align = "left" | "center" | "right";
@@ -40,10 +47,13 @@ export interface LayoutSlot {
   h: number;
   kind: SlotKind;
   custom: CustomStyle;
+  variable: string;
+  calendar_month: string;
   /** หัวข้อ / คำบรรยาย / ตำแหน่งผู้ลงนาม */
   title: string;
   /** ข้อความ (text, note) / ชื่อผู้ลงนาม (sign) */
   text: string;
+  text_marks: TextMark[];
   image: StoredImage | null;
   fit: "contain" | "cover";
   /** ตาราง (kind = table): ข้อความแต่ละเซลล์ แถว × คอลัมน์ — เซลล์ที่ถูกรวมเก็บค่าว่าง */
@@ -55,6 +65,10 @@ export interface LayoutSlot {
   shade: boolean;
   align: Align;
   size: TextSize;
+  text_font: TextFont;
+  /** ขนาดตัวอักษรหน่วย pt; null ใช้ขนาดเดิมของช่อง */
+  text_font_size: number | null;
+  text_color: string;
 }
 
 export interface LayoutPage {
@@ -73,12 +87,11 @@ export interface LayoutTemplate {
   updated_at: string;
 }
 
-export const SNAP = 2.5;
+export const KEYBOARD_STEP = 0.5;
 export const MIN_SLOT = 10;
-export const MAX_SLOTS = 12;
+export const MAX_SLOTS = 100;
 export const SLOT_COUNTS = [1, 2, 3, 4, 5, 6, 8, 9, 12];
 
-export const snap = (v: number) => Math.round(v / SNAP) * SNAP;
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 export function newSlot(patch: Partial<LayoutSlot> = {}): LayoutSlot {
@@ -90,8 +103,11 @@ export function newSlot(patch: Partial<LayoutSlot> = {}): LayoutSlot {
     h: 50,
     kind: "image",
     custom: "caption",
+    variable: "",
+    calendar_month: "",
     title: "",
     text: "",
+    text_marks: [],
     image: null,
     fit: "contain",
     cells: [["", "", ""], ["", "", ""], ["", "", ""]],
@@ -101,6 +117,9 @@ export function newSlot(patch: Partial<LayoutSlot> = {}): LayoutSlot {
     shade: false,
     align: "left",
     size: "m",
+    text_font: "default",
+    text_font_size: null,
+    text_color: "",
     ...patch,
   };
 }
@@ -128,30 +147,30 @@ export function newPage(size: PaperSize = "A4", orientation: Orientation = "port
   return relayout({ id: crypto.randomUUID(), size, orientation, slots: [] }, count);
 }
 
-/** ย้าย/ขยายช่องแล้วจัดให้อยู่ใน Body และตรงเส้นตาราง */
+/** ย้าย/ขยายช่องอย่างอิสระ โดยจำกัดขอบเขตตามชนิดของช่อง */
 export function placeSlot(s: LayoutSlot, rect: { x: number; y: number; w: number; h: number }): LayoutSlot {
-  const w = clamp(snap(rect.w), MIN_SLOT, 100);
-  const h = clamp(snap(rect.h), MIN_SLOT, 100);
-  return { ...s, w, h, x: clamp(snap(rect.x), 0, 100 - w), y: clamp(snap(rect.y), 0, 100 - h) };
+  const image = s.kind === "image" || (s.kind === "custom" && s.custom === "caption");
+  const w = clamp(rect.w, MIN_SLOT, image ? 300 : 100);
+  const h = clamp(rect.h, MIN_SLOT, image ? 300 : 100);
+  return { ...s, w, h, x: clamp(rect.x, image ? MIN_SLOT - w : 0, image ? 100 - MIN_SLOT : 100 - w), y: clamp(rect.y, image ? MIN_SLOT - h : 0, image ? 100 - MIN_SLOT : 100 - h) };
 }
 
-export const hasContent = (s: LayoutSlot) => Boolean(s.image || s.text.trim() || s.cells.some((r) => r.some((c) => c.trim())));
+export const hasContent = (s: LayoutSlot) => Boolean(s.variable || s.image || s.text.trim() || s.cells.some((r) => r.some((c) => c.trim())));
 
-/** หน้าที่ใช้เป็นแม่แบบ: ตัดรูปออก (รูปผูกกับรายงานแต่ละวัน) — keepText = เก็บหัวข้อ/ข้อความไว้ด้วย */
+/** แม่แบบเก็บรูปและตำแหน่งไว้; keepText ควบคุมข้อความที่พิมพ์เอง */
 export function toTemplatePages(pages: LayoutPage[], keepText: boolean): LayoutPage[] {
   return pages.map((p) => ({
     ...p,
     slots: p.slots.map((s) => ({
       ...s,
-      image: null,
-      ...(keepText ? {} : { title: "", text: "", cells: s.cells.map((r) => r.map(() => "")) }),
+      ...(keepText ? {} : { title: "", text: "", text_marks: [], cells: s.cells.map((r) => r.map(() => "")) }),
     })),
   }));
 }
 
-/** นำแม่แบบมาใช้กับรายงาน: สร้าง id ใหม่ทุกหน้า/ช่อง ไม่ให้ซ้ำกับรายงานอื่น */
+/** นำแม่แบบมาใช้กับรายงาน: สร้าง id ใหม่ แต่เก็บรูปที่ใช้ร่วมกัน */
 export const fromTemplate = (pages: LayoutPage[]): LayoutPage[] =>
-  pages.map((p) => ({ ...p, id: crypto.randomUUID(), slots: p.slots.map((s) => ({ ...s, id: crypto.randomUUID(), image: null })) }));
+  pages.map((p) => ({ ...p, id: crypto.randomUUID(), slots: p.slots.map((s) => ({ ...s, id: crypto.randomUUID() })) }));
 
 // ───── อ่านข้อมูลจาก Firestore (ค่าไม่ครบ / ผิดชนิด → ค่าเริ่มต้น) ─────
 
@@ -167,16 +186,21 @@ function toSlot(v: Loose): LayoutSlot {
   const cells: string[][] = Array.isArray(v.cells) && v.cells.length
     ? (v.cells as unknown[]).map((r) => (Array.isArray(r) ? r : Array.isArray((r as Loose)?.c) ? ((r as Loose).c as unknown[]) : []).map((c) => String(c ?? "")))
     : base.cells;
+  const imageKind = v.kind === "image" || (v.kind === "custom" && v.custom === "caption");
+  const position = (value: unknown, fallback: number, min: number, max: number) => Number.isFinite(Number(value)) ? clamp(Number(value), min, max) : fallback;
   return {
     id: typeof v.id === "string" ? v.id : base.id,
-    x: pct(v.x, 0),
-    y: pct(v.y, 0),
-    w: pct(v.w, 50) || 50,
-    h: pct(v.h, 50) || 50,
+    x: imageKind ? position(v.x, 0, -290, 90) : pct(v.x, 0),
+    y: imageKind ? position(v.y, 0, -290, 90) : pct(v.y, 0),
+    w: imageKind ? position(v.w, 50, MIN_SLOT, 300) : pct(v.w, 50) || 50,
+    h: imageKind ? position(v.h, 50, MIN_SLOT, 300) : pct(v.h, 50) || 50,
     kind: legacyTable ? "table" : pick(v.kind, Object.keys(SLOT_KINDS) as SlotKind[], "image"),
     custom: pick(v.custom, Object.keys(CUSTOM_STYLES) as CustomStyle[], "caption"),
+    variable: typeof v.variable === "string" ? v.variable : "",
+    calendar_month: typeof v.calendar_month === "string" ? v.calendar_month : "",
     title: String(v.title ?? ""),
     text: String(v.text ?? ""),
+    text_marks: normalizeTextMarks(v.text_marks, String(v.text ?? "").length),
     image: image?.path && image?.url ? { path: String(image.path), url: String(image.url) } : null,
     fit: v.fit === "cover" ? "cover" : "contain",
     // Firestore เก็บ array ซ้อนไม่ได้ → บันทึกเป็น [{c: [...]}]
@@ -186,6 +210,9 @@ function toSlot(v: Loose): LayoutSlot {
     shade: v.shade === true,
     align: pick(v.align, ["left", "center", "right"] as const, "left"),
     size: pick(v.size, Object.keys(TEXT_SIZES) as TextSize[], "m"),
+    text_font: pick(v.text_font, Object.keys(TEXT_FONTS) as TextFont[], "default"),
+    text_font_size: typeof v.text_font_size === "number" && Number.isFinite(v.text_font_size) ? clamp(v.text_font_size, 6, 72) : null,
+    text_color: typeof v.text_color === "string" && /^#[0-9a-fA-F]{6}$/.test(v.text_color) ? v.text_color : "",
   };
 }
 

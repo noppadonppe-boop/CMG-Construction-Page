@@ -177,18 +177,13 @@ body {
   container-type: inline-size;
   margin-inline: auto;
 }
+.dcr-layout-preview .dcr-hpage { overflow: hidden; }
 .dcr-hpage {
   --mm: calc(100cqw / var(--pw));
   position: relative;
   width: 100%;
-  background: var(--surface);
+  background: #fff;
   line-height: 1.35;
-}
-/* เส้นตารางช่วยจัดวางในฟอร์มแก้ไข (ทุก 5%) */
-.dcr-hgrid {
-  background-image: linear-gradient(color-mix(in srgb, var(--text) 7%, transparent) 1px, transparent 1px),
-    linear-gradient(90deg, color-mix(in srgb, var(--text) 7%, transparent) 1px, transparent 1px);
-  background-size: 5% 5%;
 }
 @media print {
   .dcr-hpage-wrap {
@@ -199,6 +194,7 @@ body {
   .dcr-hpage {
     --mm: 1mm;
     height: calc(var(--ph) * 1mm);
+    overflow: hidden;
     aspect-ratio: auto !important;
   }
 }

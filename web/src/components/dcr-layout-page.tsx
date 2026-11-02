@@ -2,7 +2,8 @@
 // หน้ากระดาษของหัวข้อ H — ใช้ทั้งในฟอร์มแก้ไข (มีตัวจับลาก) และหน้ารายงาน/พิมพ์
 // ขนาดทุกอย่างคิดเป็น "มม. บนกระดาษ" ผ่านตัวแปร --mm: จอ = ย่อตามความกว้าง, พิมพ์ = 1mm จริง (ดู .dcr-hpage ใน globals.css)
 import type { CSSProperties, ReactNode, Ref } from "react";
-import { PAGE_MARGIN_MM, TEXT_SIZE_MM, isCovered, mergeAt, paperMm, type LayoutPage, type LayoutSlot } from "@/lib/dcr-layout";
+import { textRuns } from "@/lib/dcr-text-format";
+import { PAGE_MARGIN_MM, TEXT_SIZE_MM, TEXT_FONT_FAMILIES, isCovered, mergeAt, paperMm, type LayoutPage, type LayoutSlot } from "@/lib/dcr-layout";
 
 /** ความสูงแถบหัวหน้า + ระยะห่างก่อน Body (มม.) */
 const HEADER_MM = 8;
@@ -60,9 +61,11 @@ export const slotBox = (r: { x: number; y: number; w: number; h: number }): CSSP
 });
 
 /** เนื้อหาของช่อง 1 ช่อง — src = รูปที่จะแสดง (รูปที่บันทึกแล้ว หรือ preview ที่ยังไม่อัปโหลด) */
-export function SlotContent({ slot: s, src, placeholder }: { slot: LayoutSlot; src?: string | null; placeholder?: ReactNode }) {
+export function SlotContent({ slot: s, src, placeholder, variableValue }: { slot: LayoutSlot; src?: string | null; placeholder?: ReactNode; variableValue?: string }) {
   const style: CSSProperties = {
-    fontSize: mm(TEXT_SIZE_MM[s.size]),
+    fontSize: mm(s.kind === "text" && s.text_font_size != null ? s.text_font_size / 2.83464567 : TEXT_SIZE_MM[s.size]),
+    fontFamily: s.kind === "text" ? TEXT_FONT_FAMILIES[s.text_font] : undefined,
+    color: s.kind === "text" ? s.text_color || undefined : undefined,
     textAlign: s.align,
     border: s.border ? `${mm(0.3)} solid color-mix(in srgb, var(--text) 35%, transparent)` : undefined,
     background: s.shade ? "var(--surface-2)" : undefined,
@@ -78,11 +81,18 @@ export function SlotContent({ slot: s, src, placeholder }: { slot: LayoutSlot; s
   const body = (() => {
     if (s.kind === "text") {
       return (
-        <div className="size-full overflow-hidden whitespace-pre-wrap" style={pad}>
+        <div className="size-full overflow-hidden whitespace-pre-wrap" style={{ ...pad, overflowWrap: "anywhere", wordBreak: "break-word" }}>
           {s.title && <div className="font-semibold">{s.title}</div>}
-          {s.text || (!s.title && placeholder)}
+          {s.variable ? (variableValue || placeholder || "—") : s.text ? textRuns(s.text, s.text_marks ?? []).map(run => <span key={run.start} style={{ fontSize: run.size != null ? mm(run.size / 2.83464567) : undefined, color: run.color || undefined }}>{run.text}</span>) : (!s.title && placeholder)}
         </div>
       );
+    }
+    if (s.kind === "calendar") {
+      const month = /^\d{4}-\d{2}$/.test(s.calendar_month) ? s.calendar_month : "";
+      const [year, mon] = month.split("-").map(Number);
+      const offset = month ? new Date(year, mon - 1, 1).getDay() : 0;
+      const days = month ? new Date(year, mon, 0).getDate() : 0;
+      return <div className="size-full overflow-hidden" style={pad}><div className="text-center font-semibold">{month || "เลือกเดือน"}</div><div className="grid grid-cols-7 text-center">{["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"].map(d => <b key={d}>{d}</b>)}{Array.from({length: offset + days}, (_, i) => <span key={i}>{i >= offset ? i - offset + 1 : ""}</span>)}</div></div>;
     }
     if (s.kind === "table") {
       return (
