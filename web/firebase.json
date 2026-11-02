@@ -50,10 +50,6 @@
         "destination": "/issues/_/_.html"
       },
       {
-        "source": "/m/*/material-request",
-        "destination": "/m/_/material-request.html"
-      },
-      {
         "source": "/m/*",
         "destination": "/m/_.html"
       },

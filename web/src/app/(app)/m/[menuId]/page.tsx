@@ -9,8 +9,9 @@ import { useProjects } from "@/lib/db/projects";
 import { useCurrentProjectId } from "@/lib/project-context";
 import { EmptyState, PageHeader, Skeleton } from "@/components/ui";
 import { LinkCard } from "../../menus/link-card";
+import { MaterialRequestBoard } from "./material-request-board";
 
-/** เมนูที่มีปุ่มเปิด Material Request form — จับจากชื่อเมนู */
+/** เมนูที่แสดง Material Request form ในหน้า — จับจากชื่อเมนู */
 const isMaterialMenu = (name: string) => /material\s*request/i.test(name);
 
 /** หน้าแสดงเมนูสำหรับผู้ใช้ทั่วไป — การเพิ่ม/ลบ/แก้ ทำที่หน้า "จัดการ Cards" (/menus) */
@@ -40,7 +41,8 @@ function CustomMenu() {
     return <EmptyState>{projectId ? "เมนูนี้ไม่ได้แสดงในโครงการนี้" : "เมนูนี้แสดงเฉพาะในบางโครงการ — เลือกโครงการก่อน"}</EmptyState>;
 
   const cards = menu.cards.filter((c) => cardVisibleIn(menu, c, projectId));
-  const showMaterial = !!projectId && isMaterialMenu(menu.name);
+  const project = projectId ? byId.get(projectId) : undefined;
+  const showMaterial = !!project && isMaterialMenu(menu.name);
   const manageHref = `/menus?menu=${menu.id}${projectId ? `&scope=${projectId}` : ""}`;
   return (
     <>
@@ -49,14 +51,23 @@ function CustomMenu() {
         subtitle={`${cards.length} Cards`}
         actions={
           <>
-            {showMaterial && (
-              <Link href={`/m/${menu.id}/material-request?project=${projectId}`} className="btn btn-primary">📦 Material Request form</Link>
-            )}
             {can("menu.manage") && <Link href={manageHref} className="btn">จัดการ Cards</Link>}
           </>
         }
       />
-      {cards.length === 0 ? (
+      {showMaterial ? (
+        // ตาราง 3 ชุดกว้าง — ขยายเป็น 80% ของพื้นที่เนื้อหา (เกิน max-w ของ main ได้) จัดกึ่งกลาง
+        <div className="relative left-1/2 w-[max(100%,80cqw)] -translate-x-1/2 space-y-6">
+          {cards.length > 0 && (
+            <div className="card-grid">
+              {cards.map((card) => (
+                <LinkCard key={card.id} card={card} />
+              ))}
+            </div>
+          )}
+          <MaterialRequestBoard project={project} />
+        </div>
+      ) : cards.length === 0 ? (
         <EmptyState>
           ยังไม่มี Card ในเมนูนี้
           {can("menu.manage") && (
