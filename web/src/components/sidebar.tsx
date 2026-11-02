@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { StaticLink } from "./static-link";
 import { useRouter } from "next/navigation";
 import { useActualPathname } from "@/lib/static-export";
 import { Suspense, useEffect, useState, type ReactNode } from "react";
@@ -140,10 +139,10 @@ function Nav({ pathname, projectId, onNavigate }: { pathname: string | null; pro
             <div key={i} className="flex flex-col gap-1">
               {s.title && <div className="px-2.5 pt-3.5 pb-1 text-[11px] tracking-wider uppercase opacity-55">{s.title}</div>}
               {items.map((item) => (
-                <StaticLink key={item.href} href={item.href} onClick={onNavigate} className={navClass(isActive(item))}>
+                <Link key={item.href} href={item.href} onClick={onNavigate} className={navClass(isActive(item))}>
                   <Icon d={icons[item.icon]} />
                   {item.label}
-                </StaticLink>
+                </Link>
               ))}
             </div>
           );
@@ -153,10 +152,10 @@ function Nav({ pathname, projectId, onNavigate }: { pathname: string | null; pro
           <div className="flex flex-col gap-1">
             <div className="px-2.5 pt-3.5 pb-1 text-[11px] tracking-wider uppercase opacity-55">เมนูเพิ่มเติม</div>
             {sideMenus.map((m) => (
-              <StaticLink key={m.id} href={`/m/${m.id}${menuQuery}`} onClick={onNavigate} className={navClass(isActive({ href: `/m/${m.id}` }))}>
+              <Link key={m.id} href={`/m/${m.id}${menuQuery}`} onClick={onNavigate} className={navClass(isActive({ href: `/m/${m.id}` }))}>
                 <SideMenuIcon menu={m} />
                 <span className="truncate">{m.name}</span>
-              </StaticLink>
+              </Link>
             ))}
           </div>
         )}
