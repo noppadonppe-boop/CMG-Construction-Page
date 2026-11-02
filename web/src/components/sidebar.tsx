@@ -19,6 +19,7 @@ const icons = {
   project: "M3 21h18M5 21V7l7-4 7 4v14M9 9h1M14 9h1M9 13h1M14 13h1M9 17h1M14 17h1",
   daily: "M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z",
   issues: "M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z",
+  material: "M21 8 12 3 3 8v8l9 5 9-5zM3 8l9 5 9-5M12 13v8",
   docs: "M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z",
   reports: "M4 20V10M10 20V4M16 20v-7M22 20H2",
   progress: "M3 17l6-6 4 4 8-8M14 7h7v7",
@@ -63,6 +64,7 @@ function projectSections(id: string): NavSection[] {
         { href: `/daily-reports${q}`, label: "รายงานประจำวัน", icon: "daily", permission: "daily.view", match: under("/daily-reports") },
         { href: `/issues${q}`, label: "ปัญหา / ความปลอดภัย", icon: "issues", permission: "issue.view", match: under("/issues") },
         { href: `/documents${q}`, label: "เอกสาร / แบบ", icon: "docs", permission: "document.view", match: under("/documents") },
+        { href: `/project-documents${q}`, label: "Project Document", icon: "material", match: under("/project-documents") },
         { href: `/projects/${id}/progress`, label: "ความคืบหน้า", icon: "progress", permission: "progress.edit" },
         { href: `/reports${q}`, label: "รายงานสัปดาห์", icon: "reports", permission: "report.view", match: under("/reports") },
         {
@@ -111,7 +113,7 @@ function Nav({ pathname, projectId, onNavigate }: { pathname: string | null; pro
   const project = projectId ? byId.get(projectId) : undefined;
   const sections = project ? projectSections(project.id) : globalSections;
   // เมนูเพิ่มเติม: นอกโครงการเห็นเฉพาะเมนูทุกโครงการ ในโครงการเห็นเมนูของโครงการนั้นด้วย (ลิงก์พา ?project= ไปต่อ)
-  const sideMenus = menus.filter((m) => menuVisibleIn(m, project?.id ?? null));
+  const sideMenus = menus.filter((m) => menuVisibleIn(m, project?.id ?? null) && !/material\s*request/i.test(m.name));
   const menuQuery = project ? `?project=${project.id}` : "";
   // pathname = null คือ fallback ระหว่างรออ่าน URL — ไม่ไฮไลต์อะไร
   const isActive = (item: Pick<NavItem, "href" | "match">) => pathname !== null && (item.match ?? under(item.href))(pathname);

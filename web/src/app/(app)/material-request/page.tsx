@@ -24,7 +24,11 @@ function MaterialRequest() {
   if (loading) return <Skeleton />;
   return (
     <>
-      <PageHeader title="Material Request" subtitle={project ? `${project.code} · ${project.name}` : "เลือกโครงการ"} />
+      <PageHeader
+        title="Material Request"
+        subtitle={project ? `${project.code} · ${project.name}` : "เลือกโครงการ"}
+        actions={project && <Link href={`/material-requisition?project=${project.id}`} className="btn">ใบขอเบิกวัสดุ (อนุมัติ / PDF)</Link>}
+      />
       {project ? (
         <div className="relative left-1/2 w-[max(100%,80cqw)] -translate-x-1/2">
           <MaterialRequestBoard project={project} />

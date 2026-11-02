@@ -23,7 +23,7 @@ export function switchProjectHref(pathname: string, nextId: string) {
   if (menu) return `${menu[0]}?project=${nextId}`;
   const sub = pathname.match(/^\/projects\/[^/]+(\/(?:edit|progress|report-settings))?/);
   if (sub) return `/projects/${nextId}${sub[1] ?? ""}`;
-  const section = pathname.match(/^\/(daily-reports|issues|documents|reports|material-request)/)?.[1];
+  const section = pathname.match(/^\/(daily-reports|issues|documents|reports|material-request|material-requisition|project-documents)/)?.[1];
   if (section) return `/${section}?project=${nextId}`;
   return `/projects/${nextId}`;
 }

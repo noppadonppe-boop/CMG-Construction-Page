@@ -15,6 +15,7 @@ import { db } from "../firebase/client";
 //          ├─ issues / {auto}                   ปัญหา / ความปลอดภัย / RFI
 //          ├─ documents / {auto}                เอกสาร / แบบ + revision
 //          ├─ material_requests / {auto}        Material Request — ข้อมูลขอเบิก + การรับของทุกครั้งในเอกสารเดียว
+//          ├─ material_requisitions / {auto}    ใบขอเบิกวัสดุ (หลายรายการ) + ขั้นตอนอนุมัติ → พิมพ์ PDF
 //          └─ email_setup / config              รายชื่อผู้รับ + เนื้อหาอีเมลรายงานประจำวัน
 //     └─ mail / {auto}                           คิวอีเมลสำหรับ Firebase Trigger Email extension
 //
@@ -23,7 +24,7 @@ import { db } from "../firebase/client";
 
 export const APP_NAME = "Cmg-Cons-Page-Claude";
 
-export type ProjectSection = "daily_reports" | "issues" | "documents" | "material_requests";
+export type ProjectSection = "daily_reports" | "issues" | "documents" | "material_requests" | "material_requisitions";
 
 export const rootRef = () => doc(db(), APP_NAME, "root");
 export const appMetaRef = () => doc(rootRef(), "appMeta", "config");

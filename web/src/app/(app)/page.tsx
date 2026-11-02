@@ -150,15 +150,15 @@ function ProjectCard({
         href={`/projects/${p.id}`}
         className={`card flex h-full flex-col gap-1 transition hover:border-primary hover:shadow-md ${recent ? "border-primary ring-2 ring-primary-soft" : ""}`}
       >
-        <div className="flex items-center justify-between gap-2 pr-9 text-xs text-muted">
-          <span>
+        <div className="flex items-center justify-between gap-2 pr-9 text-muted">
+          <span className="text-lg font-semibold text-text">
             {p.code}
-            {recent && <span className="ml-2 font-semibold text-primary">เปิดล่าสุด</span>}
+            {recent && <span className="ml-2 text-xs font-semibold text-primary">เปิดล่าสุด</span>}
           </span>
           {/* สถานะเทียบแผนมีความหมายเฉพาะโครงการที่กำลังก่อสร้าง */}
           {p.status === "active" ? <Pill tone={schedule.tone}>{schedule.label}</Pill> : <Pill tone="info">{statusLabel[p.status]}</Pill>}
         </div>
-        <div className="text-base font-semibold">{p.name}</div>
+        <div className="text-sm font-medium">{p.name}</div>
         <div className="text-xs text-muted">
           PM: {p.manager_name ?? "-"} · {formatMillions(p.contract_value)}
         </div>

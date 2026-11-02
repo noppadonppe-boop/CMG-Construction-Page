@@ -197,7 +197,7 @@ export async function updateProgress(id: string, progress: ProgressSnapshot[], e
   });
 }
 
-const SECTIONS: ProjectSection[] = ["daily_reports", "issues", "documents", "material_requests"];
+const SECTIONS: ProjectSection[] = ["daily_reports", "issues", "documents", "material_requests", "material_requisitions"];
 
 /** จำนวนข้อมูลที่จะถูกลบไปพร้อมโครงการ */
 export async function countProjectData(id: string) {

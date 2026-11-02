@@ -4,6 +4,7 @@ import type { NextConfig } from "next";
 const staticExport = process.env.STATIC_EXPORT === "1";
 
 const nextConfig: NextConfig = {
+  env: { NEXT_PUBLIC_STATIC_EXPORT: staticExport ? "1" : "" },
   // static export ใช้ Partial Prerendering ไม่ได้ — ปิด cacheComponents / partialPrefetching เฉพาะตอน export
   ...(staticExport ? { output: "export" } : { cacheComponents: true, partialPrefetching: true }),
   experimental: {
