@@ -83,7 +83,7 @@
         ]
       },
       {
-        "source": "**/*.@(html|txt)",
+        "source": "**/@(*.@(html|txt)|!(*.*))",
         "headers": [
           {
             "key": "Cache-Control",
