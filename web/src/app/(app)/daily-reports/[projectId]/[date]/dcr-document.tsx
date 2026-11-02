@@ -11,6 +11,7 @@ import {
   workingHours,
   type DcrData,
   type DcrSettings,
+  type HeadcountColumn,
   type HeadcountRow,
   type Signature,
 } from "@/lib/dcr";
@@ -127,7 +128,7 @@ export function DcrDocument({ project, settings, r, date, lang = "th" }: { proje
         <div className="grid gap-3 sm:grid-cols-2 print:grid-cols-2">
           <div className="space-y-2">
             <Headcount t={t} title={t.indirect} rows={r.manpower.indirect} />
-            <Headcount t={t} title={t.direct} rows={r.manpower.direct} />
+            <Headcount t={t} title={t.direct} rows={r.manpower.direct} columns={r.manpower.direct_columns} />
           </div>
           <div className="space-y-2">
             <table className="dcr">
@@ -313,27 +314,29 @@ function Section({ letter, title, en, children, className = "" }: { letter: stri
   );
 }
 
-function Headcount({ t, title, rows }: { t: Text; title: string; rows: HeadcountRow[] }) {
+function Headcount({ t, title, rows, columns = [] }: { t: Text; title: string; rows: HeadcountRow[]; columns?: HeadcountColumn[] }) {
   const sum = sumRows(rows);
   const absent = (r: { total: number; present: number }) => Math.max(0, r.total - r.present);
+  const span = 4 + columns.length;
   return (
     <table className="dcr">
-      <colgroup><col /><col style={{ width: "14%" }} /><col style={{ width: "17%" }} /><col style={{ width: "15%" }} /></colgroup>
+      <colgroup><col />{columns.map((c) => <col key={c.id} style={{ width: "13%" }} />)}<col style={{ width: "14%" }} /><col style={{ width: "17%" }} /><col style={{ width: "15%" }} /></colgroup>
       <thead>
-        <tr><th colSpan={4} className="dcr-sub">{title}</th></tr>
-        <tr><th>{t.position}</th><th className="num">{t.total}</th><th className="num">{t.present}</th><th className="num">{t.absent}</th></tr>
+        <tr><th colSpan={span} className="dcr-sub">{title}</th></tr>
+        <tr><th>{t.position}</th>{columns.map((c) => <th key={c.id} className="num">{c.name}</th>)}<th className="num">{t.total}</th><th className="num">{t.present}</th><th className="num">{t.absent}</th></tr>
       </thead>
       <tbody>
-        {rows.length === 0 && <tr><td colSpan={4} className="text-center text-muted">—</td></tr>}
+        {rows.length === 0 && <tr><td colSpan={span} className="text-center text-muted">—</td></tr>}
         {rows.map((r, i) => (
           <tr key={i} className={r.total || r.present ? "" : "text-muted"}>
             <td>{r.label}</td>
+            {columns.map((c) => <td key={c.id} className="num">{r.cols?.[c.id] || "–"}</td>)}
             <td className="num">{r.total || "–"}</td>
             <td className="num font-semibold">{r.present || "–"}</td>
             <td className={`num ${absent(r) ? "text-warn" : ""}`}>{absent(r) || "–"}</td>
           </tr>
         ))}
-        <tr className="dcr-total"><td>{t.sum}</td><td className="num">{sum.total}</td><td className="num">{sum.present}</td><td className="num">{absent(sum)}</td></tr>
+        <tr className="dcr-total"><td>{t.sum}</td>{columns.map((c) => <td key={c.id} className="num">{rows.reduce((s, r) => s + (r.cols?.[c.id] ?? 0), 0)}</td>)}<td className="num">{sum.total}</td><td className="num">{sum.present}</td><td className="num">{absent(sum)}</td></tr>
       </tbody>
     </table>
   );

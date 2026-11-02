@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition, type FormEvent } from "reac
 import { useAuth } from "@/lib/auth/context";
 import {
   blankEmailSetup,
+  DEFAULT_EMAIL_SUBJECT,
   EMAIL_SUBJECT_VARIABLES,
   isValidEmail,
   loadEmailSetup,
@@ -93,7 +94,7 @@ export function EmailSetupDialog({ projects, onClose }: { projects: ProjectRecor
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (!v || !userProfile) return;
-    const subject = v.subject.trim();
+    const subject = v.subject_mode === "system" ? DEFAULT_EMAIL_SUBJECT : v.subject.trim();
     if (!subject) return setError("กรุณาใส่ Subject");
     if (v.to.length === 0) return setError("กรุณาเลือกผู้รับ (Sent to) อย่างน้อย 1 คน");
     const input: EmailSetup = { ...v, subject, cc: v.cc.filter((id) => !v.to.includes(id)) };
@@ -205,12 +206,26 @@ export function EmailSetupDialog({ projects, onClose }: { projects: ProjectRecor
                   <MultiSelect label="CC" options={options.filter((o) => !v.to.includes(o.value))} value={v.cc} onChange={(cc) => set({ cc })} placeholder="เลือกจากรายชื่อ" />
                 </div>
                 <div>
-                  <label className="label" htmlFor="es-subject">Subject *</label>
-                  <textarea id="es-subject" className="input" rows={3} value={v.subject} maxLength={500} onChange={(e) => set({ subject: e.target.value })} />
+                  <div className="label" id="es-subject-label">Subject *</div>
+                  <div role="radiogroup" aria-labelledby="es-subject-label" className="mb-2 flex flex-wrap gap-x-5 gap-y-1 text-sm">
+                    <label className="flex items-center gap-2">
+                      <input type="radio" name="es-subject-mode" checked={v.subject_mode === "system"} onChange={() => set({ subject_mode: "system" })} />
+                      ใช้ของระบบ
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input type="radio" name="es-subject-mode" checked={v.subject_mode === "custom"} onChange={() => set({ subject_mode: "custom" })} />
+                      ตั้งค่าเอง
+                    </label>
+                  </div>
+                  {v.subject_mode === "system" ? (
+                    <p className="input bg-surface-2 text-muted" aria-label="Subject ของระบบ">{DEFAULT_EMAIL_SUBJECT}</p>
+                  ) : (
+                    <textarea id="es-subject" aria-labelledby="es-subject-label" className="input" rows={3} value={v.subject} maxLength={500} onChange={(e) => set({ subject: e.target.value })} />
+                  )}
                   <div className="mt-1 flex flex-wrap items-center gap-1 text-xs text-muted">
                     ตัวแปร:
                     {EMAIL_SUBJECT_VARIABLES.map((x) => (
-                      <button key={x.key} type="button" className="rounded bg-primary-soft px-1.5 font-mono text-primary hover:underline" title={x.label} onClick={() => set({ subject: `${v.subject}${v.subject && !v.subject.endsWith(" ") ? " " : ""}${x.key}` })}>
+                      <button key={x.key} type="button" disabled={v.subject_mode === "system"} className="rounded bg-primary-soft px-1.5 font-mono text-primary hover:underline disabled:opacity-50 disabled:no-underline" title={x.label} onClick={() => set({ subject: `${v.subject}${v.subject && !v.subject.endsWith(" ") ? " " : ""}${x.key}` })}>
                         {x.key}
                       </button>
                     ))}
@@ -221,7 +236,7 @@ export function EmailSetupDialog({ projects, onClose }: { projects: ProjectRecor
                   <div className="space-y-1.5 text-sm">
                     <label className="flex items-center gap-2">
                       <input type="checkbox" checked={v.attach_report_pdf} onChange={(e) => set({ attach_report_pdf: e.target.checked })} />
-                      แนบลิงก์รายงานสำหรับเปิด/พิมพ์เป็น PDF
+                      แนบรายงานเป็นไฟล์ PDF
                     </label>
                     <label className="flex items-center gap-2">
                       <input type="checkbox" checked={v.attach_photos} onChange={(e) => set({ attach_photos: e.target.checked })} />

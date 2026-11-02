@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { useRouteParams } from "@/lib/static-export";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { displayName, useAuth } from "@/lib/auth/context";
-import { DCR_STATUS_LABEL, type DcrStatus } from "@/lib/dcr";
+import { DCR_STATUS_LABEL, reportDocNo, type DcrStatus } from "@/lib/dcr";
 import { setDcrStatus, useDcr, useDcrSettings } from "@/lib/db/dcr";
 import { loadEmailSetup } from "@/lib/db/email-setup";
-import { sendDailyReportEmail } from "@/lib/db/email-outbox";
+import { captureReportPdf, sendDailyReportEmail } from "@/lib/db/email-outbox";
 import { useProjects } from "@/lib/db/projects";
 import { firebaseErrorMessage } from "@/lib/firebase/errors";
 import { formatDate } from "@/lib/format";
@@ -37,6 +37,12 @@ function DcrView() {
   const [emailNotice, setEmailNotice] = useState<string>();
   const [emailPending, setEmailPending] = useState(false);
   const [pending, run] = useSubmitOnce();
+  const docRef = useRef<HTMLDivElement>(null);
+  // รายงานล่าสุดที่หน้าจอแสดง — ใช้รอให้ลายเซ็นหลังอนุมัติขึ้นจอก่อนถ่ายภาพไปทำ PDF
+  const latestStatus = useRef<DcrStatus | undefined>(undefined);
+  useEffect(() => {
+    latestStatus.current = r?.status;
+  });
   // ภาษาที่ผู้ดูเลือก — ยังไม่เลือก = ภาษาเริ่มต้นของโครงการ
   const [picked, setPicked] = useState<ReportLang | null>(null);
   const lang = picked ?? settings?.report_lang ?? "th";
@@ -66,20 +72,30 @@ function DcrView() {
         setError(undefined);
       } catch (e) {
         setError(firebaseErrorMessage(e));
+        return;
       }
+      // PM อนุมัติ (ตรวจแล้ว) → ส่งอีเมลรายงานให้ผู้รับที่ตั้งไว้ใน Setup Email อัตโนมัติ
+      if (status === "reviewed") await sendEmail("หลังอนุมัติรายงาน", status);
     });
 
-  const sendEmail = async () => {
+  const sendEmail = async (context?: string, waitForStatus?: DcrStatus) => {
     if (!userProfile || emailPending) return;
     setEmailPending(true);
     setEmailNotice(undefined);
     setError(undefined);
     try {
       const setup = await loadEmailSetup(project.id);
-      const result = await sendDailyReportEmail({ project, settings, report: r, date, setup });
-      setEmailNotice(`ส่งอีเมลสำเร็จแล้ว (${result.recipients} ผู้รับ)`);
+      if (waitForStatus) {
+        for (let i = 0; i < 50 && latestStatus.current !== waitForStatus; i++) await new Promise((resolve) => setTimeout(resolve, 100));
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      }
+      const docEl = docRef.current?.querySelector<HTMLElement>(".dcr-doc");
+      if (setup.attach_report_pdf && !docEl) throw new Error("ไม่พบเอกสารรายงานบนหน้าจอสำหรับสร้าง PDF");
+      const pdf = docEl ? captureReportPdf(docEl, `${r.report_no ? reportDocNo(r, project.code) : project.code}_${date}.pdf`.replace(/[^\w.\-]+/g, "_")) : undefined;
+      const result = await sendDailyReportEmail({ project, settings, report: r, date, setup, pdf });
+      setEmailNotice(`${context ? `${context} · ` : ""}ส่งอีเมลสำเร็จแล้ว (${result.recipients} ผู้รับ)`);
     } catch (e) {
-      setError(`ส่งอีเมลไม่สำเร็จ: ${firebaseErrorMessage(e)}`);
+      setError(`${context ? `${context} · ` : ""}ส่งอีเมลไม่สำเร็จ: ${firebaseErrorMessage(e)}`);
     } finally {
       setEmailPending(false);
     }
@@ -114,14 +130,14 @@ function DcrView() {
           {canReview && r.status === "submitted" && <button className="btn" disabled={pending} onClick={() => act("reviewed")}>✓ ตรวจแล้ว</button>}
           {canReview && r.status === "reviewed" && <button className="btn" disabled={pending} onClick={() => act("acknowledged")}>บันทึกการรับทราบ</button>}
           {canReview && r.status !== "draft" && !r.legacy && <button className="btn text-bad" disabled={pending} onClick={() => act("draft")}>ตีกลับแก้ไข</button>}
-          {canSendEmail && <button className="btn" disabled={emailPending} onClick={sendEmail}>{emailPending ? "กำลังส่ง..." : "✉️ ส่งอีเมล"}</button>}
+          {canSendEmail && <button className="btn" disabled={emailPending} onClick={() => sendEmail()}>{emailPending ? "กำลังส่ง..." : "✉️ ส่งอีเมล"}</button>}
           <PrintButton />
         </div>
       </div>
       {error && <p className="mb-3 rounded-lg bg-bad-soft px-3 py-2 text-bad print:hidden">{error}</p>}
       {emailNotice && <p className="mb-3 rounded-lg bg-ok-soft px-3 py-2 text-ok print:hidden">{emailNotice}</p>}
 
-      <DcrDocument project={project} settings={settings} r={r} date={date} lang={lang} />
+      <div ref={docRef}><DcrDocument project={project} settings={settings} r={r} date={date} lang={lang} /></div>
     </article>
   );
 }

@@ -10,7 +10,7 @@ import {
 } from "../dcr";
 import { formatDate } from "../format";
 import type { ProjectRecord } from "./projects";
-import type { EmailSetup } from "./email-setup";
+import { DEFAULT_EMAIL_SUBJECT, type EmailSetup } from "./email-setup";
 import { currentUserIdToken } from "../firebase/client";
 
 /** รูปแบบไฟล์แนบที่ส่งต่อให้ backend SMTP */
@@ -18,6 +18,31 @@ export interface EmailOutboxAttachment {
   filename: string;
   path: string;
   contentType?: string;
+}
+
+/** ภาพนิ่งของเอกสารรายงานที่แสดงอยู่ — backend นำไปเรนเดอร์เป็น PDF ด้วยสไตล์พิมพ์เดียวกับปุ่มพิมพ์ */
+export interface ReportPdfSnapshot {
+  filename: string;
+  html: string;
+  htmlClass: string;
+  bodyClass: string;
+  lang: string;
+  baseUrl: string;
+  stylesheets: string[];
+  inlineStyles: string[];
+}
+
+export function captureReportPdf(element: HTMLElement, filename: string): ReportPdfSnapshot {
+  return {
+    filename,
+    html: element.outerHTML,
+    htmlClass: document.documentElement.className,
+    bodyClass: document.body.className,
+    lang: element.getAttribute("lang") || document.documentElement.lang || "th",
+    baseUrl: window.location.origin,
+    stylesheets: Array.from(document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')).map((l) => l.href),
+    inlineStyles: Array.from(document.querySelectorAll("style")).map((s) => s.textContent || "").filter(Boolean),
+  };
 }
 
 const escapeHtml = (value: unknown) =>
@@ -110,12 +135,15 @@ export async function sendDailyReportEmail({
   report,
   date,
   setup,
+  pdf,
 }: {
   project: ProjectRecord;
   settings: DcrSettings;
   report: DcrData;
   date: string;
   setup: EmailSetup;
+  /** ภาพนิ่งของรายงาน — แนบเป็น PDF เมื่อ setup.attach_report_pdf เปิดอยู่ */
+  pdf?: ReportPdfSnapshot;
 }) {
   const contacts = new Map(setup.contacts.map((contact) => [contact.id, contact.email.trim().toLowerCase()]));
   const resolveEmails = (ids: string[]) => ids.map((id) => contacts.get(id)).filter((email): email is string => Boolean(email));
@@ -123,7 +151,7 @@ export async function sendDailyReportEmail({
   const cc = [...new Set(resolveEmails(setup.cc))].filter((email) => !to.includes(email));
   if (to.length === 0) throw new Error("ยังไม่ได้ตั้งค่าผู้รับอีเมลใน Setup Email");
 
-  const content = buildEmailContent({ project, settings, report, date, includeReportLink: setup.attach_report_pdf });
+  const content = buildEmailContent({ project, settings, report, date, includeReportLink: true });
   const photos = report.progress.flatMap((item) => item.photos).filter((photo) => photo.url).slice(0, 10);
   const savedAttachments: EmailOutboxAttachment[] = setup.files
     .filter((file) => file.url)
@@ -142,10 +170,11 @@ export async function sendDailyReportEmail({
       projectId: project.id,
       to,
       ...(cc.length ? { cc } : {}),
-      subject: replaceSubject(setup.subject, project, report, date),
+      subject: replaceSubject(setup.subject_mode === "system" ? DEFAULT_EMAIL_SUBJECT : setup.subject, project, report, date),
       text: content.text,
       html: content.html,
       ...(attachments.length ? { attachments } : {}),
+      ...(setup.attach_report_pdf && pdf ? { pdf } : {}),
     }),
   });
 

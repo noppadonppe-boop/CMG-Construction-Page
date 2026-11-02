@@ -26,6 +26,8 @@ export interface EmailSetup {
   /** id ของ contact */
   to: string[];
   cc: string[];
+  /** system = ใช้ Subject มาตรฐานของระบบ · custom = ใช้ข้อความใน subject */
+  subject_mode: "system" | "custom";
   subject: string;
   attach_report_pdf: boolean;
   attach_photos: boolean;
@@ -45,6 +47,7 @@ export const blankEmailSetup = (): EmailSetup => ({
   contacts: [],
   to: [],
   cc: [],
+  subject_mode: "system",
   subject: DEFAULT_EMAIL_SUBJECT,
   attach_report_pdf: true,
   attach_photos: false,
@@ -63,6 +66,8 @@ function toEmailSetup(value: unknown): EmailSetup {
     // ตัด id ของคนที่ถูกลบออกจากรายชื่อไปแล้ว
     to: (d.to ?? []).filter((id) => ids.has(id)),
     cc: (d.cc ?? []).filter((id) => ids.has(id)),
+    // รุ่นก่อนไม่มี subject_mode — ถ้าเคยแก้ Subject เองให้ถือเป็น custom
+    subject_mode: d.subject_mode ?? (d.subject && d.subject !== DEFAULT_EMAIL_SUBJECT ? "custom" : "system"),
     subject: d.subject ?? blank.subject,
     attach_report_pdf: d.attach_report_pdf ?? blank.attach_report_pdf,
     attach_photos: d.attach_photos ?? blank.attach_photos,

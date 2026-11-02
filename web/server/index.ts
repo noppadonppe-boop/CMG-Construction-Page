@@ -4,6 +4,7 @@ import cors from "cors";
 import express, { type Request, type Response } from "express";
 import { getAdminAuth, getAdminDb } from "./lib/firebase-admin";
 import { mailFrom, transporter, verifyMailer } from "./lib/mail";
+import { renderReportPdf, type ReportPdfInput } from "./lib/pdf";
 
 export const app = express();
 const port = Number(process.env.PORT || 3001);
@@ -32,7 +33,8 @@ app.use(
     },
   }),
 );
-app.use(express.json({ limit: "1mb" }));
+// รับ HTML ของรายงานเพื่อทำ PDF — เพดาน request ของ Cloud Functions คือ 10 MB
+app.use(express.json({ limit: "8mb" }));
 
 type EmailAttachment = {
   filename: string;
@@ -78,6 +80,35 @@ function normalizeAttachments(value: unknown): EmailAttachment[] {
   });
 }
 
+type PdfRequest = ReportPdfInput & { filename: string };
+
+function normalizePdfRequest(value: unknown): PdfRequest | null {
+  if (value === undefined || value === null) return null;
+  const pdf = value as Partial<Record<keyof PdfRequest, unknown>>;
+  const html = String(pdf.html || "");
+  if (!html) throw new Error("pdf.html is required");
+  const baseUrl = String(pdf.baseUrl || "");
+  let origin: string;
+  try {
+    origin = new URL(baseUrl).origin;
+  } catch {
+    throw new Error("pdf.baseUrl must be a valid URL");
+  }
+  if (!allowedOrigins.has(origin)) throw new Error("pdf.baseUrl origin is not allowed");
+  const list = (item: unknown, max: number) => (Array.isArray(item) ? item.map(String).slice(0, max) : []);
+  const filename = String(pdf.filename || "daily-report.pdf").replace(/[^\w.\-]+/g, "_").slice(0, 120);
+  return {
+    filename: filename.toLowerCase().endsWith(".pdf") ? filename : `${filename}.pdf`,
+    html,
+    htmlClass: String(pdf.htmlClass || "").slice(0, 500),
+    bodyClass: String(pdf.bodyClass || "").slice(0, 500),
+    lang: String(pdf.lang || "th").slice(0, 10),
+    baseUrl: origin,
+    stylesheets: list(pdf.stylesheets, 30),
+    inlineStyles: list(pdf.inlineStyles, 30),
+  };
+}
+
 async function authorizeSend(req: Request, projectId: string) {
   const authorization = req.header("authorization") || "";
   if (!authorization.startsWith("Bearer ")) throw new Error("Unauthorized");
@@ -116,6 +147,7 @@ app.post(["/send-email", "/api/send-email"], async (req: Request, res: Response)
       text?: unknown;
       html?: unknown;
       attachments?: unknown;
+      pdf?: unknown;
     };
     const projectId = String(body.projectId || "").trim();
     if (!projectId) throw new Error("projectId is required");
@@ -134,6 +166,11 @@ app.post(["/send-email", "/api/send-email"], async (req: Request, res: Response)
       throw new Error("Email content is too large");
     }
 
+    const pdfRequest = normalizePdfRequest(body.pdf);
+    const pdfAttachment = pdfRequest
+      ? { filename: pdfRequest.filename, content: await renderReportPdf(pdfRequest), contentType: "application/pdf" }
+      : null;
+
     const info = await transporter.sendMail({
       from: mailFrom,
       to,
@@ -141,7 +178,7 @@ app.post(["/send-email", "/api/send-email"], async (req: Request, res: Response)
       subject,
       ...(text ? { text } : {}),
       ...(html ? { html } : {}),
-      attachments: normalizeAttachments(body.attachments),
+      attachments: [...(pdfAttachment ? [pdfAttachment] : []), ...normalizeAttachments(body.attachments)],
     });
 
     res.json({

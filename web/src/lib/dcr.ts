@@ -77,7 +77,8 @@ export const DCR_STATUS_LABEL: Record<DcrStatus, string> = {
 
 export type HalfDay = { sky: Sky; status: WorkStatus };
 /** total = จำนวนคนทั้งหมดของตำแหน่ง, present = มาทำงานวันนี้ (ขาด/ลา = total − present) */
-export type HeadcountRow = { label: string; total: number; present: number };
+export type HeadcountRow = { label: string; total: number; present: number; /** ค่าของคอลัมน์เพิ่มเอง (key = HeadcountColumn.id) — เมื่อมีคอลัมน์ total = ผลรวมทุกคอลัมน์ */ cols?: Record<string, number> };
+export type HeadcountColumn = { id: string; name: string };
 export type EquipmentRow = { name: string; owner: string; quantity: number; status: EquipmentStatus; remark: string };
 export type MaterialRow = { item: string; unit: string; quantity: number; remark: string };
 export type Photo = StoredImage & { caption: string };
@@ -107,7 +108,7 @@ export interface DcrData {
     site_condition: string;
     remark: string;
   };
-  manpower: { indirect: HeadcountRow[]; direct: HeadcountRow[] };
+  manpower: { indirect: HeadcountRow[]; direct: HeadcountRow[]; direct_columns?: HeadcountColumn[] };
   equipment: EquipmentRow[];
   materials: MaterialRow[];
   progress: ProgressItem[];
@@ -221,7 +222,11 @@ const toNum = (v: unknown) => Number(v) || 0;
 const toStr = (v: unknown) => (v == null ? "" : String(v));
 
 function toHeadcount(r: Loose): HeadcountRow {
-  if ("present" in r || "total" in r) return { label: toStr(r.label), total: toNum(r.total), present: toNum(r.present) };
+  if ("present" in r || "total" in r) {
+    const row: HeadcountRow = { label: toStr(r.label), total: toNum(r.total), present: toNum(r.present) };
+    if (r.cols && typeof r.cols === "object") row.cols = Object.fromEntries(Object.entries(r.cols as Loose).map(([k, v]) => [k, toNum(v)]));
+    return row;
+  }
   const present = toNum(r.main) + toNum(r.sub);
   return { label: toStr(r.label), total: present, present };
 }
@@ -250,7 +255,11 @@ export function normalizeDcrRows<T extends Pick<DcrData, "manpower" | "equipment
   const rows = (v: unknown) => (Array.isArray(v) ? (v as Loose[]) : []);
   return {
     ...d,
-    manpower: { indirect: rows(d.manpower?.indirect).map(toHeadcount), direct: rows(d.manpower?.direct).map(toHeadcount) },
+    manpower: {
+      indirect: rows(d.manpower?.indirect).map(toHeadcount),
+      direct: rows(d.manpower?.direct).map(toHeadcount),
+      ...(rows(d.manpower?.direct_columns).length ? { direct_columns: rows(d.manpower?.direct_columns).map((c) => ({ id: toStr(c.id), name: toStr(c.name) })) } : {}),
+    },
     equipment: rows(d.equipment).map(toEquipment),
     materials: rows(d.materials).map(toMaterial),
     layout_pages: normalizeLayoutPages(d.layout_pages),

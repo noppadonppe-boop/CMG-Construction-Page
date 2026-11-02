@@ -16,6 +16,10 @@ export function layoutVariables(r: DcrData, head: Head): LayoutVariable[] {
   };
   columns("C", r.manpower.indirect, [["indirect_role", "ตำแหน่ง Indirect", x => x.label], ["indirect_total", "จำนวน Indirect ทั้งหมด", x => x.total], ["indirect_present", "Indirect มาทำงาน", x => x.present]]);
   columns("C", r.manpower.direct, [["direct_role", "ตำแหน่ง Direct", x => x.label], ["direct_total", "จำนวน Direct ทั้งหมด", x => x.total], ["direct_present", "Direct มาทำงาน", x => x.present]]);
+  for (const col of r.manpower.direct_columns ?? []) {
+    const name = col.name.trim() || "(ไม่มีชื่อ)";
+    columns("C", r.manpower.direct, [["direct_col_" + col.id, "Direct · " + name, x => x.cols?.[col.id] ?? 0]]);
+  }
   columns("C", r.equipment, [["equipment_name", "ชื่อเครื่องจักร", x => x.name], ["equipment_owner", "เจ้าของเครื่องจักร", x => x.owner], ["equipment_quantity", "จำนวนเครื่องจักร", x => x.quantity], ["equipment_status", "สถานะเครื่องจักร", x => EQUIPMENT_STATUS_LABEL[x.status]], ["equipment_remark", "หมายเหตุเครื่องจักร", x => x.remark]]);
   columns("C", r.materials, [["material_item", "รายการวัสดุ", x => x.item], ["material_unit", "หน่วยวัสดุ", x => x.unit], ["material_quantity", "จำนวนวัสดุ", x => x.quantity], ["material_remark", "หมายเหตุวัสดุ", x => x.remark]]);
   columns("D", r.progress, [["zone", "พื้นที่ทำงาน", x => x.zone], ["category", "ประเภทงาน", x => x.category], ["description", "รายละเอียดงาน", x => x.description], ["quantity", "ปริมาณวันนี้", x => x.quantity], ["cumulative", "ปริมาณสะสม", x => x.cumulative]]);
@@ -24,6 +28,6 @@ export function layoutVariables(r: DcrData, head: Head): LayoutVariable[] {
   return [
     ...fields.map(([key, label, value]) => ({ key, label, value: value == null || value === "" ? "" : String(value) })),
     ...manpowerVariables("indirect", r.manpower.indirect),
-    ...manpowerVariables("direct", r.manpower.direct),
+    ...manpowerVariables("direct", r.manpower.direct, r.manpower.direct_columns),
   ];
 }

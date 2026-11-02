@@ -29,6 +29,7 @@ import {
   type DcrSettings,
   type EquipmentRow,
   type HalfDay,
+  type HeadcountColumn,
   type HeadcountRow,
   type Photo,
 } from "@/lib/dcr";
@@ -187,12 +188,12 @@ export function DcrForm({
     previousReport(project.id, date, settings)
       .then((prev) => {
         if (cancelled || !prev) return;
-        const withTotals = (rows: HeadcountRow[]) => rows.map((r) => ({ label: r.label, total: r.total, present: 0 }));
+        const withTotals = (rows: HeadcountRow[]) => rows.map((r) => ({ label: r.label, total: r.total, present: 0, ...(r.cols ? { cols: { ...r.cols } } : {}) }));
         setData((d) =>
           // เริ่มกรอกตัวเลขแล้ว (หรือกู้ร่าง) → ไม่ทับ
           [...d.manpower.indirect, ...d.manpower.direct].some((r) => r.total || r.present)
             ? d
-            : { ...d, manpower: { indirect: withTotals(prev.manpower.indirect), direct: withTotals(prev.manpower.direct) } },
+            : { ...d, manpower: { indirect: withTotals(prev.manpower.indirect), direct: withTotals(prev.manpower.direct), ...(prev.manpower.direct_columns ? { direct_columns: prev.manpower.direct_columns } : {}) } },
         );
         setNotice(`ดึง Total ของกำลังคนจากรายงานวันที่ ${formatDate(prev.report_date)} แล้ว — กรอกจำนวนที่มาทำงานวันนี้`);
       })
@@ -568,7 +569,7 @@ export function DcrForm({
             <div className="grid items-start gap-3 md:grid-cols-2">
               <div className="space-y-3">
                 <HeadcountTable title="Indirect Manpower (Staff)" addLabel="เพิ่มตำแหน่ง" rows={data.manpower.indirect} onChange={(fn) => update((d) => ({ ...d, manpower: { ...d.manpower, indirect: fn(d.manpower.indirect) } }))} />
-                <HeadcountTable title="Direct Manpower (Labor)" addLabel="เพิ่มประเภทช่าง" rows={data.manpower.direct} onChange={(fn) => update((d) => ({ ...d, manpower: { ...d.manpower, direct: fn(d.manpower.direct) } }))} />
+                <HeadcountTable title="Direct Manpower (Labor)" addLabel="เพิ่มประเภทช่าง" rows={data.manpower.direct} onChange={(fn) => update((d) => ({ ...d, manpower: { ...d.manpower, direct: fn(d.manpower.direct) } }))} onSave={() => save(false)} saveBusy={pending || layoutBusy} columns={data.manpower.direct_columns ?? []} onColumnsChange={(fn) => update((d) => ({ ...d, manpower: { ...d.manpower, ...fn(d.manpower.direct_columns ?? [], d.manpower.direct) } }))} />
               </div>
               <div className="space-y-3">
                 <EditTable
@@ -876,32 +877,83 @@ function ItemCard({ n, onRemove, children }: { n: number; onRemove?: () => void;
   );
 }
 
-function HeadcountTable({ title, addLabel, rows, onChange }: { title: string; addLabel: string; rows: HeadcountRow[]; onChange: (fn: (rows: HeadcountRow[]) => HeadcountRow[]) => void }) {
+function HeadcountTable({ title, addLabel, rows, onChange, columns, onColumnsChange, onSave, saveBusy }: {
+  title: string;
+  addLabel: string;
+  rows: HeadcountRow[];
+  onChange: (fn: (rows: HeadcountRow[]) => HeadcountRow[]) => void;
+  /** คอลัมน์ที่เพิ่มเอง (เฉพาะตารางที่เปิดให้เพิ่มได้) */
+  columns?: HeadcountColumn[];
+  onColumnsChange?: (fn: (cols: HeadcountColumn[], rows: HeadcountRow[]) => { direct_columns: HeadcountColumn[]; direct: HeadcountRow[] }) => void;
+  onSave?: () => void;
+  saveBusy?: boolean;
+}) {
+  const cols = columns ?? [];
+  const withSum = (r: HeadcountRow, keep: HeadcountColumn[]): HeadcountRow => (keep.length ? { ...r, total: keep.reduce((s, c) => s + (r.cols?.[c.id] ?? 0), 0) } : r);
   const set = (i: number, patch: Partial<HeadcountRow>) => onChange((all) => all.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const setCol = (i: number, id: string, value: number) => onChange((all) => all.map((r, j) => (j === i ? withSum({ ...r, cols: { ...r.cols, [id]: value } }, cols) : r)));
+  const renameCol = (id: string, name: string) => onColumnsChange?.((cs, rs) => ({ direct_columns: cs.map((c) => (c.id === id ? { ...c, name } : c)), direct: rs }));
+  // คอลัมน์แรก: ยกค่า Total เดิมมาใส่ เพื่อไม่ให้ Total หายเป็น 0
+  const addCol = () =>
+    onColumnsChange?.((cs, rs) => {
+      const id = crypto.randomUUID();
+      return { direct_columns: [...cs, { id, name: "" }], direct: rs.map((r) => (cs.length ? { ...r, cols: { ...r.cols, [id]: 0 } } : { ...r, cols: { ...r.cols, [id]: r.total } })) };
+    });
+  const removeCol = (id: string) =>
+    onColumnsChange?.((cs, rs) => {
+      const keep = cs.filter((c) => c.id !== id);
+      return { direct_columns: keep, direct: rs.map((r) => { const { [id]: _drop, ...rest } = r.cols ?? {}; return withSum({ ...r, cols: rest }, keep); }) };
+    });
   const sum = sumRows(rows);
   const absent = (r: { total: number; present: number }) => Math.max(0, r.total - r.present);
+  const span = 5 + cols.length;
   return (
     <div>
+      <div className="overflow-x-auto">
       <table className="dcr dcr-edit">
-        <colgroup><col /><col style={{ width: "17%" }} /><col style={{ width: "19%" }} /><col style={{ width: "14%" }} /><col style={{ width: "32px" }} /></colgroup>
+        <colgroup><col style={cols.length ? { minWidth: 140 } : undefined} /><col style={{ width: cols.length ? 80 : "17%" }} /><col style={{ width: cols.length ? 90 : "19%" }} /><col style={{ width: cols.length ? 80 : "14%" }} />{cols.map((c) => <col key={c.id} style={{ width: 110 }} />)}<col style={{ width: "32px" }} /></colgroup>
         <thead>
-          <tr><th colSpan={5} className="dcr-sub">{title}</th></tr>
-          <tr><th>ตำแหน่ง / ประเภท</th><th className="num">Total</th><th className="num">มาทำงาน</th><th className="num">ขาด/ลา</th><th /></tr>
+          <tr><th colSpan={span} className="dcr-sub">{title}</th></tr>
+          <tr>
+            <th>ตำแหน่ง / ประเภท</th>
+            <th className="num">Total</th><th className="num">มาทำงาน</th><th className="num">ขาด/ลา</th>
+            {cols.map((c) => (
+              <th key={c.id} className="num">
+                <div className="flex items-center gap-1">
+                  <input aria-label="ชื่อคอลัมน์" placeholder="ชื่อคอลัมน์" className="dcr-cell font-semibold" value={c.name} onChange={(e) => renameCol(c.id, e.target.value)} />
+                  <RemoveButton label={`ลบคอลัมน์ ${c.name}`} onClick={() => removeCol(c.id)} />
+                </div>
+              </th>
+            ))}
+            <th />
+          </tr>
         </thead>
         <tbody>
           {rows.map((r, i) => (
             <tr key={i}>
               <td><input aria-label="ตำแหน่ง" className="dcr-cell" value={r.label} onChange={(e) => set(i, { label: e.target.value })} /></td>
-              <td><input aria-label={`${r.label} Total`} type="number" min={0} inputMode="numeric" className="dcr-cell" value={r.total} onFocus={(e) => e.target.select()} onChange={(e) => set(i, { total: num(e.target.value) })} /></td>
+              {cols.length ? (
+                <td className="num font-semibold">{r.total}</td>
+              ) : (
+                <td><input aria-label={`${r.label} Total`} type="number" min={0} inputMode="numeric" className="dcr-cell" value={r.total} onFocus={(e) => e.target.select()} onChange={(e) => set(i, { total: num(e.target.value) })} /></td>
+              )}
               <td><input aria-label={`${r.label} มาทำงาน`} type="number" min={0} inputMode="numeric" className="dcr-cell font-semibold" value={r.present} onFocus={(e) => e.target.select()} onChange={(e) => set(i, { present: num(e.target.value) })} /></td>
               <td className={`num ${absent(r) ? "font-semibold text-warn" : "text-muted"}`}>{absent(r) || "–"}</td>
+              {cols.map((c) => (
+                <td key={c.id}><input aria-label={`${r.label} ${c.name}`} type="number" min={0} inputMode="numeric" className="dcr-cell" value={r.cols?.[c.id] ?? 0} onFocus={(e) => e.target.select()} onChange={(e) => setCol(i, c.id, num(e.target.value))} /></td>
+              ))}
               <td><RemoveButton label={`ลบแถว ${r.label}`} onClick={() => onChange((all) => all.filter((_, j) => j !== i))} /></td>
             </tr>
           ))}
-          <tr className="dcr-total"><td>รวม</td><td className="num">{sum.total}</td><td className="num">{sum.present}</td><td className="num">{absent(sum)}</td><td /></tr>
+          <tr className="dcr-total"><td>รวม</td><td className="num">{sum.total}</td><td className="num">{sum.present}</td><td className="num">{absent(sum)}</td>{cols.map((c) => <td key={c.id} className="num">{rows.reduce((s, r) => s + (r.cols?.[c.id] ?? 0), 0)}</td>)}<td /></tr>
         </tbody>
       </table>
-      <AddButton label={addLabel} onClick={() => onChange((all) => [...all, { label: "", total: 0, present: 0 }])} />
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <AddButton label={addLabel} onClick={() => onChange((all) => [...all, { label: "", total: 0, present: 0, ...(cols.length ? { cols: {} } : {}) }])} />
+        {onColumnsChange && <AddButton label="เพิ่มคอลัมน์" onClick={addCol} />}
+        {onSave && <button type="button" className="btn ml-auto px-3 py-1 text-xs" disabled={saveBusy} onClick={onSave}>{saveBusy ? "กำลังบันทึก..." : "บันทึก"}</button>}
+      </div>
     </div>
   );
 }

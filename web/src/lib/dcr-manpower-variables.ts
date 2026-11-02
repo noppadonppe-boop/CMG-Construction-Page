@@ -1,7 +1,7 @@
-import type { HeadcountRow } from "./dcr";
+import type { HeadcountColumn, HeadcountRow } from "./dcr";
 
 /** Bind to a role name, not its position, so reordering rows does not change a template. */
-export function manpowerVariables(group: "indirect" | "direct", rows: HeadcountRow[]) {
+export function manpowerVariables(group: "indirect" | "direct", rows: HeadcountRow[], columns: HeadcountColumn[] = []) {
   const seen = new Map<string, number>();
   return rows.flatMap((row) => {
     const name = row.label.trim().normalize("NFKC");
@@ -21,6 +21,13 @@ export function manpowerVariables(group: "indirect" | "direct", rows: HeadcountR
       key: `${key}.${field}`,
       label: `C_${nameLabel}${suffix}_${field} · ${groupLabel} · ${description}`,
       value: String(value),
+    })).concat(columns.map((col) => {
+      const colLabel = (col.name.trim() || "คอลัมน์").replace(/\s+/g, "_");
+      return {
+        key: `${key}.Col.${col.id}`,
+        label: `C_${nameLabel}${suffix}_${colLabel} · ${groupLabel} · คอลัมน์ ${col.name.trim() || "(ไม่มีชื่อ)"}`,
+        value: String(row.cols?.[col.id] ?? 0),
+      };
     }));
   });
 }
