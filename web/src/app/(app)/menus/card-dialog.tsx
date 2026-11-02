@@ -34,7 +34,7 @@ export function CardDialog({ menu, card, onClose }: { menu: CustomMenu; card?: M
       submitLabel={card ? "บันทึก" : "เพิ่ม Card"}
       validate={() => {
         if (!input.name) return "กรุณาใส่ชื่อ Card";
-        if (input.url !== "#" && !safeUrl(input.url)) return "URL ต้องขึ้นต้นด้วย http:// หรือ https:// (ใส่ # ถ้ายังไม่มี URL)";
+        if (input.url !== "#" && !safeUrl(input.url)) return "URL ต้องขึ้นต้นด้วย http://, https:// หรือ / สำหรับหน้าในแอปนี้ (ใส่ # ถ้ายังไม่มี URL)";
         return scopeError(limited, input.project_ids);
       }}
       save={() => (card ? updateCard(menuId, card, input, userProfile!.email) : addCard(menuId, input, userProfile!.email))}
@@ -68,7 +68,7 @@ export function CardDialog({ menu, card, onClose }: { menu: CustomMenu; card?: M
           required
           inputMode="url"
         />
-        <p className="mt-1 text-xs text-muted">ใส่ # ถ้ายังไม่มี URL</p>
+        <p className="mt-1 text-xs text-muted">ใส่ # ถ้ายังไม่มี URL · หน้าในแอปนี้ใส่แค่ path ได้ เช่น /material-request?project=…</p>
       </div>
       <div>
         <div className="label">เมื่อกด Card</div>

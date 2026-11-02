@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
-import { safeUrl, type MenuCard } from "@/lib/db/menus";
+import Link from "next/link";
+import { inAppPath, safeUrl, type MenuCard } from "@/lib/db/menus";
 import { MenuIcon } from "@/components/icon-pickers";
 
 /** Card ลิงก์ — ขนาดตาม w × h บนตาราง; Card เล็กจะซ่อนคำอธิบายอัตโนมัติ */
@@ -33,6 +34,16 @@ export function LinkCard({ card, tools }: { card: MenuCard; tools?: ReactNode })
   );
 
   const cls = "card relative flex h-full flex-col items-center justify-center gap-1.5 overflow-hidden p-3 text-center transition";
+  const hover = "hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md";
+  // เปิดในแท็บนี้ + ลิงก์ในแอป → เปลี่ยนหน้าเหมือนกดเมนูข้าง (ไม่โหลดใหม่ทั้งหน้า)
+  const local = href && !tools && card.open_in === "same" ? inAppPath(href) : null;
+  if (local) {
+    return (
+      <Link href={local} style={style} className={`${cls} ${hover}`}>
+        {body}
+      </Link>
+    );
+  }
   return href && !tools ? (
     <a href={href} {...(card.open_in === "same" ? {} : { target: "_blank", rel: "noopener noreferrer" })} style={style} className={`${cls} hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md`}>
       {body}

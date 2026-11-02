@@ -127,12 +127,22 @@ export const cardVisibleIn = (menu: CustomMenu, card: MenuCard, projectId: strin
 
 /** ลิงก์ที่เปิดได้จริง — รับเฉพาะ http(s) เพื่อกัน javascript: และลิงก์แปลก ๆ */
 export function safeUrl(url: string): string | null {
+  // path ภายในแอป เช่น /material-request?project=xxx
+  if (/^\/(?!\/)/.test(url.trim())) return url.trim();
   try {
     const u = new URL(url.trim());
     return u.protocol === "http:" || u.protocol === "https:" ? u.href : null;
   } catch {
     return null;
   }
+}
+
+/** URL ที่ชี้มาที่แอปนี้เอง (path หรือโดเมนเดียวกัน) → path สำหรับเปลี่ยนหน้าในแอป ไม่ใช่ → null */
+export function inAppPath(href: string): string | null {
+  if (href.startsWith("/")) return href;
+  if (typeof window === "undefined") return null;
+  const u = new URL(href);
+  return u.origin === window.location.origin ? u.pathname + u.search + u.hash : null;
 }
 
 /** เมนูเพิ่มเติมทั้งหมด (realtime) เรียงตามลำดับที่ตั้งไว้ */
