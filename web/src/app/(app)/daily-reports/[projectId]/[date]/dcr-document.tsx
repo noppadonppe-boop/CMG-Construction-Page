@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element -- รูปจาก Firebase Storage URL */
 // เอกสารรายงานประจำวัน (A–H) สำหรับแสดงบนจอและพิมพ์ (A–G = A4, H = ขนาด/แนวตามที่ตั้งแต่ละหน้า) — ป้ายกำกับเปลี่ยนตามภาษา (ไทย / English / 中文)
 import type { ReactNode } from "react";
+import { normalizeHeadcount } from "@/lib/dcr-headcount";
 import {
   manpowerTotals,
   sumRows,
@@ -318,6 +319,7 @@ function Section({ letter, title, en, sectionKey, children, className = "" }: { 
 }
 
 function Headcount({ t, title, rows, columns = [] }: { t: Text; title: string; rows: HeadcountRow[]; columns?: HeadcountColumn[] }) {
+  rows = rows.map(normalizeHeadcount);
   const sum = sumRows(rows);
   const absent = (r: { total: number; present: number }) => Math.max(0, r.total - r.present);
   const span = 4 + columns.length;
@@ -338,9 +340,9 @@ function Headcount({ t, title, rows, columns = [] }: { t: Text; title: string; r
           <tr key={i} className={r.total || r.present ? "" : "text-muted"}>
             <td>{r.label}</td>
             {columns.map((c) => <td key={c.id} className="num">{r.cols?.[c.id] || "–"}</td>)}
-            <td className="num">{r.total || "–"}</td>
-            <td className="num font-semibold">{r.present || "–"}</td>
-            <td className={`num ${absent(r) ? "text-warn" : ""}`}>{absent(r) || "–"}</td>
+            <td className="num">{r.total}</td>
+            <td className="num font-semibold">{r.present}</td>
+            <td className={`num ${absent(r) ? "text-warn" : ""}`}>{absent(r)}</td>
           </tr>
         ))}
         <tr className="dcr-total"><td>{t.sum}</td>{columns.map((c) => <td key={c.id} className="num">{rows.reduce((s, r) => s + (r.cols?.[c.id] ?? 0), 0)}</td>)}<td className="num">{sum.total}</td><td className="num">{sum.present}</td><td className="num">{absent(sum)}</td></tr>

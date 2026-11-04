@@ -1,9 +1,9 @@
+import { normalizeHeadcount, sumHeadcounts } from "./dcr-headcount";
 import type { HeadcountColumn, HeadcountRow } from "./dcr";
 
 /** Summary cells use the same row and column totals as the report table. */
 export function manpowerSummaryVariables(group: "indirect" | "direct", rows: HeadcountRow[], columns: HeadcountColumn[] = []) {
-  const total = rows.reduce((sum, row) => sum + row.total, 0);
-  const present = rows.reduce((sum, row) => sum + row.present, 0);
+  const { total, present } = sumHeadcounts(rows);
   const groupLabel = group === "indirect" ? "Indirect" : "Direct";
   return [
     { key: `C.manpower.${group}.sum.Total`, label: `C · ${groupLabel} · รวมทั้งหมด`, value: String(total) },
@@ -20,7 +20,7 @@ export function manpowerSummaryVariables(group: "indirect" | "direct", rows: Hea
 /** Bind to a role name, not its position, so reordering rows does not change a template. */
 export function manpowerVariables(group: "indirect" | "direct", rows: HeadcountRow[], columns: HeadcountColumn[] = []) {
   const seen = new Map<string, number>();
-  return rows.flatMap((row) => {
+  return rows.map(normalizeHeadcount).flatMap((row) => {
     const name = row.label.trim().normalize("NFKC");
     if (!name) return [];
     const identity = name.toLocaleLowerCase();

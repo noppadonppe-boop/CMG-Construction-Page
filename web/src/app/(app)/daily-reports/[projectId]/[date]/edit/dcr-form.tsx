@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { normalizeHeadcount, headcountNumber } from "@/lib/dcr-headcount";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { displayName, useAuth } from "@/lib/auth/context";
@@ -892,16 +893,21 @@ function HeadcountTable({ title, addLabel, rows, onChange, columns, onColumnsCha
   onSave?: () => void;
   saveBusy?: boolean;
 }) {
+  rows = rows.map(normalizeHeadcount);
   const cols = columns ?? [];
-  const withSum = (r: HeadcountRow, keep: HeadcountColumn[]): HeadcountRow => (keep.length ? { ...r, total: keep.reduce((s, c) => s + (r.cols?.[c.id] ?? 0), 0) } : r);
-  const set = (i: number, patch: Partial<HeadcountRow>) => onChange((all) => all.map((r, j) => (j === i ? { ...r, ...patch } : r)));
-  const setCol = (i: number, id: string, value: number) => onChange((all) => all.map((r, j) => (j === i ? withSum({ ...r, cols: { ...r.cols, [id]: value } }, cols) : r)));
+  const withSum = (r: HeadcountRow, keep: HeadcountColumn[]): HeadcountRow => {
+    if (!keep.length) return normalizeHeadcount(r);
+    const total = keep.reduce((s, c) => s + headcountNumber(r.cols?.[c.id] ?? 0), 0);
+    return { ...r, total, present: Math.min(headcountNumber(r.present), total) };
+  };
+  const set = (i: number, patch: Partial<HeadcountRow>) => onChange((all) => all.map((r, j) => (j === i ? normalizeHeadcount({ ...normalizeHeadcount(r), ...patch, ...(cols.length && patch.present !== undefined ? { present: Math.min(patch.present, r.total) } : {}) }) : r)));
+  const setCol = (i: number, id: string, value: number) => onChange((all) => all.map((r, j) => (j === i ? withSum({ ...r, cols: { ...r.cols, [id]: headcountNumber(value) } }, cols) : r)));
   const renameCol = (id: string, name: string) => onColumnsChange?.((cs, rs) => ({ direct_columns: cs.map((c) => (c.id === id ? { ...c, name } : c)), direct: rs }));
   // คอลัมน์แรก: ยกค่า Total เดิมมาใส่ เพื่อไม่ให้ Total หายเป็น 0
   const addCol = () =>
     onColumnsChange?.((cs, rs) => {
       const id = crypto.randomUUID();
-      return { direct_columns: [...cs, { id, name: "" }], direct: rs.map((r) => (cs.length ? { ...r, cols: { ...r.cols, [id]: 0 } } : { ...r, cols: { ...r.cols, [id]: r.total } })) };
+      return { direct_columns: [...cs, { id, name: "" }], direct: rs.map((r) => (cs.length ? { ...r, cols: { ...r.cols, [id]: 0 } } : { ...r, cols: { ...r.cols, [id]: normalizeHeadcount(r).total } })) };
     });
   const removeCol = (id: string) =>
     onColumnsChange?.((cs, rs) => {
@@ -920,7 +926,7 @@ function HeadcountTable({ title, addLabel, rows, onChange, columns, onColumnsCha
           <tr><th colSpan={span} className="dcr-sub">{title}</th></tr>
           <tr>
             <th>ตำแหน่ง / ประเภท</th>
-            <th className="num">Total</th><th className="num">มาทำงาน</th><th className="num">ขาด/ลา</th>
+            <th className="num">Total (ทั้งหมด)</th><th className="num">มาทำงาน</th><th className="num">ขาด/ลา</th>
             {cols.map((c) => (
               <th key={c.id} className="num">
                 <div className="flex min-w-0 flex-col items-stretch gap-1">
@@ -942,7 +948,7 @@ function HeadcountTable({ title, addLabel, rows, onChange, columns, onColumnsCha
                 <td><input aria-label={`${r.label} Total`} type="number" min={0} inputMode="numeric" className="dcr-cell" value={r.total} onFocus={(e) => e.target.select()} onChange={(e) => set(i, { total: num(e.target.value) })} /></td>
               )}
               <td><input aria-label={`${r.label} มาทำงาน`} type="number" min={0} inputMode="numeric" className="dcr-cell font-semibold" value={r.present} onFocus={(e) => e.target.select()} onChange={(e) => set(i, { present: num(e.target.value) })} /></td>
-              <td className={`num ${absent(r) ? "font-semibold text-warn" : "text-muted"}`}>{absent(r) || "–"}</td>
+              <td className={`num ${absent(r) ? "font-semibold text-warn" : "text-muted"}`}>{absent(r)}</td>
               {cols.map((c) => (
                 <td key={c.id}><input aria-label={`${r.label} ${c.name}`} type="number" min={0} inputMode="numeric" className="dcr-cell" value={r.cols?.[c.id] ?? 0} onFocus={(e) => e.target.select()} onChange={(e) => setCol(i, c.id, num(e.target.value))} /></td>
               ))}
@@ -953,6 +959,7 @@ function HeadcountTable({ title, addLabel, rows, onChange, columns, onColumnsCha
         </tbody>
       </table>
       </div>
+      <p className="my-2 text-xs text-muted">ขาด/ลา = Total − มาทำงาน · รวม = ผลบวกของทุกแถว (คน) · {cols.length ? "Total = ผลรวมคอลัมน์เพิ่มเติม; มาทำงานไม่เกิน Total (ลด Total จะปรับมาทำงานลงด้วย)" : "เมื่อมาทำงานเกิน Total ระบบเพิ่ม Total ให้เท่ากับมาทำงาน"}</p>
       <div className="flex flex-wrap gap-2">
         <AddButton label={addLabel} onClick={() => onChange((all) => [...all, { label: "", total: 0, present: 0, ...(cols.length ? { cols: {} } : {}) }])} />
         {onColumnsChange && <AddButton label="เพิ่มคอลัมน์" onClick={addCol} />}

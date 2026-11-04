@@ -1,9 +1,11 @@
+import { normalizeHeadcount } from "./dcr-headcount";
 import { manpowerSummaryVariables, manpowerVariables } from "./dcr-manpower-variables";
 import { manpowerTotals, workingHours, type DcrData } from "./dcr";
 import { DCR_TEXT, translateValue, type ReportLang } from "./dcr-i18n";
 type Head = { project_name: string; project_no: string; client: string; consultant: string; contractor: string; subcontractors: string; location: string; doc_no: string };
 export type LayoutVariable = { key: string; label: string; value: string };
 export function layoutVariables(r: DcrData, head: Head, lang: ReportLang = "th"): LayoutVariable[] {
+  r = { ...r, manpower: { ...r.manpower, indirect: r.manpower.indirect.map(normalizeHeadcount), direct: r.manpower.direct.map(normalizeHeadcount) } };
   const t = DCR_TEXT[lang];
   const totals = manpowerTotals(r.manpower, workingHours(r.working_hours.start, r.working_hours.end));
   const rows = <T,>(items: T[], fn: (item: T) => string) => items.map(fn).filter(Boolean).join("\n");
@@ -17,8 +19,8 @@ export function layoutVariables(r: DcrData, head: Head, lang: ReportLang = "th")
   const columns = <T,>(section: string, items: T[], definitions: [string, string, (item: T) => unknown][]) => {
     for (const [key, label, get] of definitions) fields.push([section + "." + key, section + " · " + label, rows(items, item => String(get(item) ?? ""))]);
   };
-  columns("C", r.manpower.indirect, [["indirect_role", "ตำแหน่ง Indirect", x => x.label], ["indirect_total", "จำนวน Indirect ทั้งหมด", x => x.total], ["indirect_present", "Indirect มาทำงาน", x => x.present]]);
-  columns("C", r.manpower.direct, [["direct_role", "ตำแหน่ง Direct", x => x.label], ["direct_total", "จำนวน Direct ทั้งหมด", x => x.total], ["direct_present", "Direct มาทำงาน", x => x.present]]);
+  columns("C", r.manpower.indirect, [["indirect_role", "ตำแหน่ง Indirect", x => x.label], ["indirect_total", "จำนวน Indirect ทั้งหมด", x => x.total], ["indirect_present", "Indirect มาทำงาน", x => x.present], ["indirect_leave", "Indirect ขาด/ลา", x => x.total - x.present]]);
+  columns("C", r.manpower.direct, [["direct_role", "ตำแหน่ง Direct", x => x.label], ["direct_total", "จำนวน Direct ทั้งหมด", x => x.total], ["direct_present", "Direct มาทำงาน", x => x.present], ["direct_leave", "Direct ขาด/ลา", x => x.total - x.present]]);
   for (const col of r.manpower.direct_columns ?? []) {
     const name = col.name.trim() || "(ไม่มีชื่อ)";
     columns("C", r.manpower.direct, [["direct_col_" + col.id, "Direct · " + name, x => x.cols?.[col.id] ?? 0]]);
@@ -34,6 +36,8 @@ export function layoutVariables(r: DcrData, head: Head, lang: ReportLang = "th")
     ...manpowerVariables("direct", r.manpower.direct, r.manpower.direct_columns),
     ...manpowerSummaryVariables("indirect", r.manpower.indirect),
     ...manpowerSummaryVariables("direct", r.manpower.direct, r.manpower.direct_columns),
+    { key: "C.manpower.sum.total", label: "C · รวมทั้งหมดทุกประเภท", value: String(totals.registered) },
+    { key: "C.manpower.sum.leave", label: "C · รวมขาด/ลาทุกประเภท", value: String(totals.registered - totals.total) },
     { key: "C.manpower.sum.present", label: "C · รวมมาทำงานทุกประเภท", value: String(totals.total) },
     { key: "C.manpower.sum.manHours", label: "C · ชั่วโมงงานรวม", value: String(Math.round(totals.manHours)) },
   ];

@@ -1,3 +1,4 @@
+import { normalizeHeadcount, sumHeadcounts } from "./dcr-headcount";
 // รายงานประจำวันงานก่อสร้าง (Daily Construction Report — DCR)
 // โครงสร้างข้อมูล + ค่าเริ่มต้น + การคำนวณ — ไม่ผูกกับ Firebase จึงใช้ได้ทั้งฟอร์ม รายงาน และสคริปต์
 
@@ -207,7 +208,7 @@ export function carryOver(previous: DcrData, today: DcrData): DcrData {
   };
 }
 
-export const sumRows = (rows: HeadcountRow[]) => rows.reduce((s, r) => ({ total: s.total + r.total, present: s.present + r.present }), { total: 0, present: 0 });
+export const sumRows = sumHeadcounts;
 
 /** total = คนที่มาทำงานวันนี้ (ใช้คิดชั่วโมงงาน), registered = จำนวนคนทั้งหมด */
 export function manpowerTotals(m: DcrData["manpower"], hoursPerDay = 8) {
@@ -227,7 +228,7 @@ function toHeadcount(r: Loose): HeadcountRow {
   if ("present" in r || "total" in r) {
     const row: HeadcountRow = { label: toStr(r.label), total: toNum(r.total), present: toNum(r.present) };
     if (r.cols && typeof r.cols === "object") row.cols = Object.fromEntries(Object.entries(r.cols as Loose).map(([k, v]) => [k, toNum(v)]));
-    return row;
+    return normalizeHeadcount(row);
   }
   const present = toNum(r.main) + toNum(r.sub);
   return { label: toStr(r.label), total: present, present };
