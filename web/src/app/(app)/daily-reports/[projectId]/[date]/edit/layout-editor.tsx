@@ -78,6 +78,7 @@ export function LayoutEditor({
   const [cur, setCur] = useState(0);
   const [preview, setPreview] = useState(false);
   const [selId, setSelId] = useState<string | null>(null);
+  const [editingCell, setEditingCell] = useState<{ id: string; r: number; c: number } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [textSelection, setTextSelection] = useState<{ id: string; start: number; end: number } | null>(null);
   const canvasTextRef = useRef<HTMLTextAreaElement>(null);
@@ -137,6 +138,12 @@ export function LayoutEditor({
     setPage((p) => ({ ...p, slots: [...p.slots, s] }));
     setSelId(s.id);
   }
+  function addShape() {
+    if (!page || page.slots.length >= MAX_SLOTS) return;
+    const s = placeSlot(newSlot({ kind: "shape", border: false, w: 20, h: 8 }), { x: sel?.x ?? 0, y: sel?.y ?? 0, w: 20, h: 8 });
+    setPage((p) => ({ ...p, slots: [...p.slots, s] }));
+    setSelId(s.id);
+  }
   function removeSlot(s: LayoutSlot) {
     if (hasContent(s) && !confirm("ลบช่องนี้และเนื้อหาในช่อง?")) return;
     onDropImages([s]);
@@ -148,7 +155,7 @@ export function LayoutEditor({
   function startDrag(e: ReactPointerEvent, s: LayoutSlot, mode: Drag["mode"]) {
     e.stopPropagation();
     setSelId(s.id);
-    if (locked || e.button !== 0 || !bodyRef.current || editingId === s.id) return;
+    if (locked || e.button !== 0 || !bodyRef.current || (editingId === s.id || editingCell?.id === s.id)) return;
     e.preventDefault();
     const box = bodyRef.current.getBoundingClientRect();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -252,6 +259,7 @@ export function LayoutEditor({
             </Field>
             <button type="button" className="btn px-2.5 py-1 text-xs" onClick={() => setPage((p) => relayout(p, p.slots.length))} title="วางทุกช่องกลับเป็นตาราง เนื้อหาเดิมคงอยู่">▦ จัดเรียงอัตโนมัติ</button>
             <button type="button" className="btn px-2.5 py-1 text-xs" disabled={page.slots.length >= MAX_SLOTS} onClick={addSlot}>+ เพิ่ม Box</button>
+            <button type="button" className="btn px-2.5 py-1 text-xs" disabled={page.slots.length >= MAX_SLOTS} onClick={addShape}>+ เพิ่ม Shape / ไฮไลต์</button>
           </div>
 
           <div className="grid items-start gap-3 lg:grid-cols-[minmax(0,1fr)_260px]">
@@ -283,7 +291,7 @@ export function LayoutEditor({
                       tabIndex={0}
                       aria-label={`ช่อง ${i + 1} ${s.kind === "custom" ? CUSTOM_STYLES[s.custom] : SLOT_KINDS[s.kind]}`}
                       aria-pressed={active}
-                      style={slotBox(rect)}
+                      style={slotBox({ ...rect, kind: s.kind })}
                       className={`group touch-none outline-none ${locked ? "" : "cursor-move"} ${active ? "" : ""}`}
                       onPointerDown={(e) => startDrag(e, s, "move")}
                       onDoubleClick={(e) => { if (!locked && s.kind === "text" && !s.variable) { e.stopPropagation(); setSelId(s.id); setEditingId(s.id); setTextSelection(null); } }}
@@ -294,11 +302,11 @@ export function LayoutEditor({
                       onKeyDown={(e) => onSlotKey(e, s)}
                     >
                       <div className={`relative size-full select-none ${active ? "outline-2 outline-primary" : "outline-1 outline-text/30 outline-dashed group-hover:outline-primary/60"}`}>
-                        <SlotContent slot={s} src={fresh[s.id]?.preview} variableValue={variables.find(v => v.key === s.variable)?.value} placeholder={s.variable ? variables.find(v => v.key === s.variable)?.label : <Placeholder slot={s} />} />
+                        <SlotContent slot={s} src={fresh[s.id]?.preview} variableValue={variables.find(v => v.key === s.variable)?.value} placeholder={s.variable ? variables.find(v => v.key === s.variable)?.label : <Placeholder slot={s} />} editingCell={editingCell?.id === s.id ? editingCell : undefined} onSelectTable={!locked && s.kind === "table" ? () => setSelId(s.id) : undefined} onEditCell={!locked && s.kind === "table" ? (r, c) => { setSelId(s.id); setEditingCell({ id: s.id, r, c }); } : undefined} onChangeCell={(r, c, value) => setSlot(s.id, { cells: s.cells.map((row, ri) => ri === r ? row.map((v, ci) => ci === c ? value : v) : row) })} onFinishCell={() => setEditingCell(null)} />
                         {editingId === s.id && s.kind === "text" && !s.variable && <textarea
                           ref={canvasTextRef} aria-label="แก้ไขข้อความบน Box" value={s.text}
                           className="absolute inset-x-0 bottom-0 w-full resize-none border-0 bg-white outline-none select-text"
-                          style={{ top: s.title ? mm(5) : 0, padding: `${mm(1.2)} ${mm(1.6)}`, fontSize: mm(s.text_font_size != null ? s.text_font_size / 2.83464567 : TEXT_SIZE_MM[s.size]), fontFamily: TEXT_FONT_FAMILIES[s.text_font], color: s.text_color || undefined, textAlign: s.align, lineHeight: 1.35, overflowWrap: "anywhere" }}
+                          style={{ top: s.title ? mm(5) : 0, padding: mm(0.2), fontSize: mm(s.text_font_size != null ? s.text_font_size / 2.83464567 : TEXT_SIZE_MM[s.size]), fontFamily: TEXT_FONT_FAMILIES[s.text_font], color: s.text_color || undefined, textAlign: s.align, lineHeight: 1.35, overflowWrap: "anywhere" }}
                           onPointerDown={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}
                           onSelect={e => setTextSelection({ id: s.id, start: e.currentTarget.selectionStart, end: e.currentTarget.selectionEnd })}
                           onChange={e => { const text = e.target.value; setSlot(s.id, { text, text_marks: updateTextMarks(s.text, text, s.text_marks ?? []) }); setTextSelection({ id: s.id, start: e.target.selectionStart, end: e.target.selectionEnd }); }}
@@ -318,7 +326,7 @@ export function LayoutEditor({
                   );
                 })}
               </LayoutPaper>
-              <p className="mt-2 text-center text-[11px] text-muted">คลิกช่องเพื่อเลือก · ดับเบิลคลิก Box ข้อความเพื่อแก้ไขและเลือกคำ · ลากเพื่อย้าย · เลือกรูปที่ไอคอนบน Box · รูปขยายเกินขอบได้ (ส่วนที่เกินกระดาษจะไม่พิมพ์) · ลากขอบขวา/ล่าง/มุมเพื่อขยาย · ลูกศร = ย้าย, Shift + ลูกศร = ปรับขนาด (ทีละ {KEYBOARD_STEP}%)</p>
+              <p className="mt-2 text-center text-[11px] text-muted">คลิกช่องเพื่อเลือก · ดับเบิลคลิก Box ข้อความหรือเซลล์ตารางเพื่อแก้ไข · ลากเพื่อย้าย · เลือกรูปที่ไอคอนบน Box · รูปขยายเกินขอบได้ (ส่วนที่เกินกระดาษจะไม่พิมพ์) · ลากขอบขวา/ล่าง/มุมเพื่อขยาย · ลูกศร = ย้าย, Shift + ลูกศร = ปรับขนาด (ทีละ {KEYBOARD_STEP}%)</p>
             </div>
 
             {/* ตั้งค่าช่อง */}
@@ -432,10 +440,16 @@ function SlotPanel({
           </select>
         </label>
       )}
-      <label className="block">
+      {s.kind !== "shape" && <label className="block">
         <span className="label">{titleLabel}</span>
         <input className="dcr-cell" value={s.title} onChange={(e) => onChange({ title: e.target.value })} />
-      </label>
+      </label>}
+      {s.kind === "shape" && <div className="space-y-2">
+        <label className="block"><span className="label">รูปทรง</span><select className="dcr-cell" value={s.shape_type} onChange={e => onChange({ shape_type: e.target.value as LayoutSlot["shape_type"] })}><option value="rectangle">สี่เหลี่ยม</option><option value="ellipse">วงรี</option></select></label>
+        <label className="flex items-center gap-2 text-xs"><span>สี</span><input type="color" aria-label="สี Shape" value={s.shape_color} onChange={e => onChange({ shape_color: e.target.value })} /></label>
+        <label className="block text-xs"><span>ความโปร่งใส {s.shape_transparency}%</span><input aria-label="ความโปร่งใส Shape" className="w-full" type="range" min={0} max={100} step={1} value={s.shape_transparency} onChange={e => onChange({ shape_transparency: Number(e.target.value) })} /></label>
+        <p className="text-xs text-muted">ลาก Shape ไปวางบนรูปภาพ และปรับลำดับ Box เพื่อให้อยู่ด้านหน้ารูป</p>
+      </div>}
       {usesText && !s.variable && (
         <label className="block">
           <span className="label">{textLabel}</span>
@@ -476,12 +490,12 @@ function SlotPanel({
         <span className="label">สไตล์</span>
         <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
           <label className="flex items-center gap-1.5"><input type="checkbox" checked={s.border} onChange={(e) => onChange({ border: e.target.checked })} /> เส้นกรอบ</label>
-          <label className="flex items-center gap-1.5"><input type="checkbox" checked={s.shade} onChange={(e) => onChange({ shade: e.target.checked })} /> พื้นหลังเทา</label>
+          {s.kind !== "shape" && <label className="flex items-center gap-1.5"><input type="checkbox" checked={s.shade} onChange={(e) => onChange({ shade: e.target.checked })} /> พื้นหลังเทา</label>}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        {s.kind !== "shape" && <div className="flex flex-wrap items-center gap-2">
           <Segmented value={s.align} options={[["left", "ซ้าย"], ["center", "กลาง"], ["right", "ขวา"]]} onChange={(align) => onChange({ align })} />
           {s.kind !== "text" && <Segmented value={s.size} options={Object.entries(TEXT_SIZES) as [LayoutSlot["size"], string][]} onChange={(size) => onChange({ size })} />}
-        </div>
+        </div>}
       </div>
       {s.kind === "text" && <div className="space-y-2 border-t border-border pt-2">
         <label className="block"><span className="label">แบบอักษร</span><select className="dcr-cell" value={s.text_font || "default"} onChange={e => onChange({ text_font: e.target.value as LayoutSlot["text_font"] })}>{Object.entries(TEXT_FONTS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>

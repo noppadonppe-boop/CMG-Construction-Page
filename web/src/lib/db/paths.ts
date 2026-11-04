@@ -41,7 +41,7 @@ export const menuIconPath = (fileName: string) => `${APP_NAME}/root/menus/icons/
 export const projectsCol =() => collection(rootRef(), "projects");
 export const projectRef = (projectId: string) => doc(projectsCol(), projectId);
 export const sectionCol = (projectId: string, section: ProjectSection) => collection(projectRef(projectId), section);
-export const emailSetupRef = (projectId: string) => doc(projectRef(projectId), "email_setup", "config");
+export const emailSetupRef = (projectId: string, tab = "daily") => doc(projectRef(projectId), "email_setup", tab === "daily" ? "config" : tab);
 export const emailOutboxCol = () => collection(rootRef(), "mail");
 
 export const storagePath = (projectId: string, section: ProjectSection, docId: string, fileName: string) =>

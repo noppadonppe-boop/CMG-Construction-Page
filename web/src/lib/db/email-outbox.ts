@@ -12,6 +12,7 @@ import { formatDate } from "../format";
 import type { ProjectRecord } from "./projects";
 import { DEFAULT_EMAIL_SUBJECT, type EmailSetup } from "./email-setup";
 import { currentUserIdToken } from "../firebase/client";
+import type { DailySectionKey } from "../daily-report-standard";
 
 /** รูปแบบไฟล์แนบที่ส่งต่อให้ backend SMTP */
 export interface EmailOutboxAttachment {
@@ -32,10 +33,14 @@ export interface ReportPdfSnapshot {
   inlineStyles: string[];
 }
 
-export function captureReportPdf(element: HTMLElement, filename: string): ReportPdfSnapshot {
+export function captureReportPdf(element: HTMLElement, filename: string, excludedSections: readonly DailySectionKey[] = []): ReportPdfSnapshot {
+  const snapshot = element.cloneNode(true) as HTMLElement;
+  snapshot.querySelectorAll<HTMLElement>("[data-pdf-section]").forEach((section) => {
+    if (excludedSections.includes(section.dataset.pdfSection as DailySectionKey)) section.remove();
+  });
   return {
     filename,
-    html: element.outerHTML,
+    html: snapshot.outerHTML,
     htmlClass: document.documentElement.className,
     bodyClass: document.body.className,
     lang: element.getAttribute("lang") || document.documentElement.lang || "th",
@@ -152,6 +157,11 @@ export async function sendDailyReportEmail({
   if (to.length === 0) throw new Error("ยังไม่ได้ตั้งค่าผู้รับอีเมลใน Setup Email");
 
   const content = buildEmailContent({ project, settings, report, date, includeReportLink: true });
+  const profile = setup.subject_mode === "custom" ? setup.profiles.find((p) => p.id === setup.selected_profile_id) : undefined;
+  const title = profile ? replaceSubject(profile.title, project, report, date) : "";
+  const body = profile ? replaceSubject(profile.body, project, report, date) : "";
+  const customText = [title, body].filter(Boolean).join("\n\n");
+  const customHtml = [title && "<h2>" + escapeHtml(title) + "</h2>", body && "<p>" + escapeHtml(body).replaceAll("\n", "<br>") + "</p>"].filter(Boolean).join("");
   const photos = report.progress.flatMap((item) => item.photos).filter((photo) => photo.url).slice(0, 10);
   const savedAttachments: EmailOutboxAttachment[] = setup.files
     .filter((file) => file.url)
@@ -171,8 +181,8 @@ export async function sendDailyReportEmail({
       to,
       ...(cc.length ? { cc } : {}),
       subject: replaceSubject(setup.subject_mode === "system" ? DEFAULT_EMAIL_SUBJECT : setup.subject, project, report, date),
-      text: content.text,
-      html: content.html,
+      text: profile ? customText : content.text,
+      html: profile ? customHtml : content.html,
       ...(attachments.length ? { attachments } : {}),
       ...(setup.attach_report_pdf && pdf ? { pdf } : {}),
     }),

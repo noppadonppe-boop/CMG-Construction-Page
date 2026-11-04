@@ -1,7 +1,7 @@
 // รายงานประจำวันงานก่อสร้าง (Daily Construction Report — DCR)
 // โครงสร้างข้อมูล + ค่าเริ่มต้น + การคำนวณ — ไม่ผูกกับ Firebase จึงใช้ได้ทั้งฟอร์ม รายงาน และสคริปต์
 
-import type { DailyReportStandardSnapshot } from "./daily-report-standard";
+import type { DailyReportStandardSnapshot, DailySectionKey } from "./daily-report-standard";
 import type { ReportLang } from "./dcr-i18n";
 import { normalizeLayoutPages, type LayoutPage } from "./dcr-layout";
 
@@ -118,6 +118,8 @@ export interface DcrData {
   tomorrow: PlanRow[];
   /** H: หน้าเอกสารแนบแบบจัดหน้าเอง (รายงานเดิมไม่มี = []) */
   layout_pages: LayoutPage[];
+  /** หัวข้อที่ไม่รวมใน PDF แนบอีเมล; รายงานเดิมที่ไม่มีค่านี้รวมทุกหัวข้อ */
+  email_pdf_excluded_sections?: DailySectionKey[];
   signatures: { prepared: Signature; reviewed: Signature; acknowledged: Signature };
 }
 

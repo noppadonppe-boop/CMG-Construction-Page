@@ -54,7 +54,7 @@ import { useSubmitOnce } from "@/lib/use-submit-once";
 import { compress } from "@/components/photo-picker";
 import { CompanyLogo } from "@/components/company-logo";
 import { ConflictNotice } from "@/components/conflict-notice";
-import { sectionLetters, type DailyReportStandardSnapshot } from "@/lib/daily-report-standard";
+import { sectionLetters, type DailyReportStandardSnapshot, type DailySectionKey } from "@/lib/daily-report-standard";
 import { layoutVariables } from "@/lib/dcr-layout-variables";
 import { LayoutEditor } from "./layout-editor";
 
@@ -354,6 +354,7 @@ export function DcrForm({
   const appliedStandard = data.form_standard ?? standard;
   // หัวข้อที่มาตรฐานเปิดใช้ + ตัวอักษรที่เรียงใหม่
   const L = sectionLetters(appliedStandard?.sections);
+  const setPdfIncluded = (key: DailySectionKey, included: boolean) => update((d) => ({ ...d, email_pdf_excluded_sections: included ? (d.email_pdf_excluded_sections ?? []).filter((item) => item !== key) : [...new Set([...(d.email_pdf_excluded_sections ?? []), key])] }));
   const docLabel = data.report_no ? reportDocNo(data, project.code) : null;
   const nextDocNo = formatDocNo(settings.doc_format, project.code, settings.report_counter + 1);
   const itemLabel = (i: number) => {
@@ -411,7 +412,7 @@ export function DcrForm({
 
         <fieldset disabled={locked || layoutBusy} className="space-y-3">
           {/* A. ข้อมูลโครงการ */}
-          <Section letter="A" title="ข้อมูลโครงการ" en="Project information" id="dcr-sec-project">
+          <Section letter="A" title="ข้อมูลโครงการ" en="Project information" id="dcr-sec-project" pdfIncluded={!data.email_pdf_excluded_sections?.includes("project")} onPdfChange={(included) => setPdfIncluded("project", included)}>
             {[settings.client, settings.contractor, ...subsToday].some((c) => c.logo) && (
               <div className="mb-2 flex flex-wrap items-center gap-3">
                 {[settings.client, ...(head.show_consultant ? settings.consultants : []), settings.contractor, ...subsToday].map((c) => <CompanyLogo key={c.id} company={c} size={32} />)}
@@ -518,7 +519,7 @@ export function DcrForm({
           </Section>
 
           {/* B. สภาพอากาศ */}
-          {L.weather && (<Section letter={L.weather} title="รายงานสภาพอากาศ" en="Weather report" id="dcr-sec-weather">
+          {L.weather && (<Section letter={L.weather} title="รายงานสภาพอากาศ" en="Weather report" id="dcr-sec-weather" pdfIncluded={!data.email_pdf_excluded_sections?.includes("weather")} onPdfChange={(included) => setPdfIncluded("weather", included)}>
             <div className="overflow-x-auto">
               <table className="dcr dcr-edit min-w-[640px]">
                 <colgroup><col style={{ width: "13%" }} /><col style={{ width: "19%" }} /><col style={{ width: "18%" }} /><col style={{ width: "17%" }} /><col style={{ width: "10%" }} /><col style={{ width: "10%" }} /><col /></colgroup>
@@ -565,11 +566,10 @@ export function DcrForm({
           </Section>)}
 
           {/* C. กำลังคน (ซ้าย) · เครื่องจักร (ขวา) */}
-          {L.manpower && (<Section letter={L.manpower} title="กำลังคนและเครื่องจักร" en="Manpower & equipment on site" id="dcr-sec-manpower">
+          {L.manpower && (<Section letter={L.manpower} title="กำลังคนและเครื่องจักร" en="Manpower & equipment on site" id="dcr-sec-manpower" pdfIncluded={!data.email_pdf_excluded_sections?.includes("manpower")} onPdfChange={(included) => setPdfIncluded("manpower", included)}>
             <div className="grid items-start gap-3 md:grid-cols-2">
               <div className="space-y-3">
                 <HeadcountTable title="Indirect Manpower (Staff)" addLabel="เพิ่มตำแหน่ง" rows={data.manpower.indirect} onChange={(fn) => update((d) => ({ ...d, manpower: { ...d.manpower, indirect: fn(d.manpower.indirect) } }))} />
-                <HeadcountTable title="Direct Manpower (Labor)" addLabel="เพิ่มประเภทช่าง" rows={data.manpower.direct} onChange={(fn) => update((d) => ({ ...d, manpower: { ...d.manpower, direct: fn(d.manpower.direct) } }))} onSave={() => save(false)} saveBusy={pending || layoutBusy} columns={data.manpower.direct_columns ?? []} onColumnsChange={(fn) => update((d) => ({ ...d, manpower: { ...d.manpower, ...fn(d.manpower.direct_columns ?? [], d.manpower.direct) } }))} />
               </div>
               <div className="space-y-3">
                 <EditTable
@@ -611,6 +611,9 @@ export function DcrForm({
                 />
               </div>
             </div>
+            <div className="mt-3 min-w-0">
+              <HeadcountTable title="Direct Manpower (Labor)" addLabel="เพิ่มประเภทช่าง" rows={data.manpower.direct} onChange={(fn) => update((d) => ({ ...d, manpower: { ...d.manpower, direct: fn(d.manpower.direct) } }))} onSave={() => save(false)} saveBusy={pending || layoutBusy} columns={data.manpower.direct_columns ?? []} onColumnsChange={(fn) => update((d) => ({ ...d, manpower: { ...d.manpower, ...fn(d.manpower.direct_columns ?? [], d.manpower.direct) } }))} />
+            </div>
             <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
               <Stat label="Indirect มาทำงาน / Total" value={`${totals.indirect.present} / ${totals.indirect.total}`} unit="คน" />
               <Stat label="Direct มาทำงาน / Total" value={`${totals.direct.present} / ${totals.direct.total}`} unit="คน" />
@@ -620,7 +623,7 @@ export function DcrForm({
           </Section>)}
 
           {/* D. งานที่ทำวันนี้ */}
-          {L.activities && (<Section letter={L.activities} title="งานที่ดำเนินการวันนี้" en="Today's activities" id="dcr-sec-activities">
+          {L.activities && (<Section letter={L.activities} title="งานที่ดำเนินการวันนี้" en="Today's activities" id="dcr-sec-activities" pdfIncluded={!data.email_pdf_excluded_sections?.includes("activities")} onPdfChange={(included) => setPdfIncluded("activities", included)}>
             <datalist id="dcr-work-categories">{WORK_CATEGORIES.map((c) => <option key={c} value={c} />)}</datalist>
             <div className="space-y-2">
               {data.progress.map((p, i) => {
@@ -661,7 +664,7 @@ export function DcrForm({
           </Section>)}
 
           {/* E. ปัญหาและอุปสรรค */}
-          {L.issues && (<Section letter={L.issues} title="ปัญหาและอุปสรรค" en="Problems & obstacles" id="dcr-sec-issues">
+          {L.issues && (<Section letter={L.issues} title="ปัญหาและอุปสรรค" en="Problems & obstacles" id="dcr-sec-issues" pdfIncluded={!data.email_pdf_excluded_sections?.includes("issues")} onPdfChange={(included) => setPdfIncluded("issues", included)}>
             {data.issues.length === 0 && <p className="rounded-lg border border-dashed border-border py-3 text-center text-sm text-muted">ไม่มีปัญหาและอุปสรรค</p>}
             <div className="space-y-2">
               {data.issues.map((x, i) => {
@@ -689,7 +692,7 @@ export function DcrForm({
           </Section>)}
 
           {/* F. แผนงานพรุ่งนี้ */}
-          {L.tomorrow && (<Section letter={L.tomorrow} title="งานที่วางแผนวันพรุ่งนี้" en="Tomorrow's plan" id="dcr-sec-tomorrow">
+          {L.tomorrow && (<Section letter={L.tomorrow} title="งานที่วางแผนวันพรุ่งนี้" en="Tomorrow's plan" id="dcr-sec-tomorrow" pdfIncluded={!data.email_pdf_excluded_sections?.includes("tomorrow")} onPdfChange={(included) => setPdfIncluded("tomorrow", included)}>
             {data.tomorrow.length === 0 && <p className="rounded-lg border border-dashed border-border py-3 text-center text-sm text-muted">ยังไม่มีแผนงาน</p>}
             <div className="space-y-2">
               {data.tomorrow.map((t, i) => {
@@ -712,7 +715,7 @@ export function DcrForm({
           </Section>)}
 
           {/* G. เอกสารแนบ */}
-          {L.attachments && (<Section letter={L.attachments} title="เอกสารแนบ / ภาพประกอบ" en="Attachments" hint={photoCount ? `${photoCount} รูป` : undefined} id="dcr-sec-attachments">
+          {L.attachments && (<Section letter={L.attachments} title="เอกสารแนบ / ภาพประกอบ" en="Attachments" hint={photoCount ? `${photoCount} รูป` : undefined} id="dcr-sec-attachments" pdfIncluded={!data.email_pdf_excluded_sections?.includes("attachments")} onPdfChange={(included) => setPdfIncluded("attachments", included)}>
             <Attachments
               items={data.progress.map((p, i) => ({ id: p.id, label: itemLabel(i), saved: p.photos, fresh: newPhotos[p.id] ?? [] }))}
               busy={photoBusy}
@@ -727,7 +730,7 @@ export function DcrForm({
           </Section>)}
 
           {/* H. เอกสารแนบแบบจัดหน้า */}
-          {L.layout && (<Section letter={L.layout} title="เอกสารแนบ (จัดหน้า)" en="Attachment pages" hint={data.layout_pages.length ? `${data.layout_pages.length} หน้า` : undefined} id="dcr-sec-layout">
+          {L.layout && (<Section letter={L.layout} title="เอกสารแนบ (จัดหน้า)" en="Attachment pages" hint={data.layout_pages.length ? `${data.layout_pages.length} หน้า` : undefined} id="dcr-sec-layout" pdfIncluded={!data.email_pdf_excluded_sections?.includes("layout")} onPdfChange={(included) => setPdfIncluded("layout", included)}>
             <LayoutEditor
               variables={layoutVariables(data, { ...head, subcontractors: head.subcontractors.filter(s => data.subcontractors_today.includes(s.id)).map(s => s.name).join(", "), location: project.location ?? "", doc_no: docLabel ?? nextDocNo })}
               pages={data.layout_pages}
@@ -784,14 +787,15 @@ function stripRecord(r: DcrRecord | null): DcrData | null {
 
 // ───────────── ชิ้นส่วนฟอร์ม ─────────────
 
-function Section({ id, letter, title, en, hint, children }: { id: string; letter: string; title: string; en: string; hint?: string; children: ReactNode }) {
+function Section({ id, letter, title, en, hint, children, pdfIncluded, onPdfChange }: { id: string; letter: string; title: string; en: string; hint?: string; children: ReactNode; pdfIncluded?: boolean; onPdfChange?: (included: boolean) => void }) {
   return (
     <section id={id} className="card scroll-mt-20">
       <h3 className="mb-3 flex flex-wrap items-center gap-2 border-b-2 border-primary pb-1.5 font-semibold">
         <span className="dcr-letter">{letter}</span>
         {title}
         <span className="text-xs font-normal text-muted">{en}</span>
-        {hint && <span className="ml-auto text-xs font-normal text-muted">{hint}</span>}
+        {hint && <span className="text-xs font-normal text-muted">{hint}</span>}
+        {onPdfChange && <label className="ml-auto flex items-center gap-1.5 text-xs font-normal"><input type="checkbox" checked={pdfIncluded} onChange={(e) => onPdfChange(e.target.checked)} /> แนบส่วนนี้ใน PDF ส่งอีเมล</label>}
       </h3>
       {children}
     </section>
@@ -909,9 +913,9 @@ function HeadcountTable({ title, addLabel, rows, onChange, columns, onColumnsCha
   const span = 5 + cols.length;
   return (
     <div>
-      <div className="overflow-x-auto">
-      <table className="dcr dcr-edit">
-        <colgroup><col style={cols.length ? { minWidth: 140 } : undefined} /><col style={{ width: cols.length ? 80 : "17%" }} /><col style={{ width: cols.length ? 90 : "19%" }} /><col style={{ width: cols.length ? 80 : "14%" }} />{cols.map((c) => <col key={c.id} style={{ width: 110 }} />)}<col style={{ width: "32px" }} /></colgroup>
+      <div className={onColumnsChange ? "min-w-0" : "overflow-x-auto"}>
+      <table className={`dcr dcr-edit ${onColumnsChange ? "dcr-direct-edit" : ""}`}>
+        {onColumnsChange ? <colgroup><col style={{ width: "25%" }} />{Array.from({ length: 3 + cols.length }, (_, i) => <col key={i} style={{ width: `calc((75% - 32px) / ${3 + cols.length})` }} />)}<col style={{ width: "32px" }} /></colgroup> : <colgroup><col /><col style={{ width: "17%" }} /><col style={{ width: "19%" }} /><col style={{ width: "14%" }} /><col style={{ width: "32px" }} /></colgroup>}
         <thead>
           <tr><th colSpan={span} className="dcr-sub">{title}</th></tr>
           <tr>
@@ -919,8 +923,8 @@ function HeadcountTable({ title, addLabel, rows, onChange, columns, onColumnsCha
             <th className="num">Total</th><th className="num">มาทำงาน</th><th className="num">ขาด/ลา</th>
             {cols.map((c) => (
               <th key={c.id} className="num">
-                <div className="flex items-center gap-1">
-                  <input aria-label="ชื่อคอลัมน์" placeholder="ชื่อคอลัมน์" className="dcr-cell font-semibold" value={c.name} onChange={(e) => renameCol(c.id, e.target.value)} />
+                <div className="flex min-w-0 flex-col items-stretch gap-1">
+                  <input aria-label="ชื่อคอลัมน์" placeholder="ชื่อ" className="dcr-cell font-semibold" value={c.name} onChange={(e) => renameCol(c.id, e.target.value)} />
                   <RemoveButton label={`ลบคอลัมน์ ${c.name}`} onClick={() => removeCol(c.id)} />
                 </div>
               </th>

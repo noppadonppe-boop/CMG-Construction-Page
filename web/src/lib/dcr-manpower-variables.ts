@@ -1,5 +1,22 @@
 import type { HeadcountColumn, HeadcountRow } from "./dcr";
 
+/** Summary cells use the same row and column totals as the report table. */
+export function manpowerSummaryVariables(group: "indirect" | "direct", rows: HeadcountRow[], columns: HeadcountColumn[] = []) {
+  const total = rows.reduce((sum, row) => sum + row.total, 0);
+  const present = rows.reduce((sum, row) => sum + row.present, 0);
+  const groupLabel = group === "indirect" ? "Indirect" : "Direct";
+  return [
+    { key: `C.manpower.${group}.sum.Total`, label: `C · ${groupLabel} · รวมทั้งหมด`, value: String(total) },
+    { key: `C.manpower.${group}.sum.Work`, label: `C · ${groupLabel} · รวมมาทำงาน`, value: String(present) },
+    { key: `C.manpower.${group}.sum.Leave`, label: `C · ${groupLabel} · รวมขาด/ลา`, value: String(Math.max(0, total - present)) },
+    ...columns.map((col) => ({
+      key: `C.manpower.${group}.sum.Col.${col.id}`,
+      label: `C · ${groupLabel} · รวม ${col.name.trim() || "(ไม่มีชื่อ)"}`,
+      value: String(rows.reduce((sum, row) => sum + (row.cols?.[col.id] ?? 0), 0)),
+    })),
+  ];
+}
+
 /** Bind to a role name, not its position, so reordering rows does not change a template. */
 export function manpowerVariables(group: "indirect" | "direct", rows: HeadcountRow[], columns: HeadcountColumn[] = []) {
   const seen = new Map<string, number>();

@@ -91,7 +91,7 @@ function DcrView() {
       }
       const docEl = docRef.current?.querySelector<HTMLElement>(".dcr-doc");
       if (setup.attach_report_pdf && !docEl) throw new Error("ไม่พบเอกสารรายงานบนหน้าจอสำหรับสร้าง PDF");
-      const pdf = docEl ? captureReportPdf(docEl, `${r.report_no ? reportDocNo(r, project.code) : project.code}_${date}.pdf`.replace(/[^\w.\-]+/g, "_")) : undefined;
+      const pdf = docEl ? captureReportPdf(docEl, `${r.report_no ? reportDocNo(r, project.code) : project.code}_${date}.pdf`.replace(/[^\w.\-]+/g, "_"), r.email_pdf_excluded_sections) : undefined;
       const result = await sendDailyReportEmail({ project, settings, report: r, date, setup, pdf });
       setEmailNotice(`${context ? `${context} · ` : ""}ส่งอีเมลสำเร็จแล้ว (${result.recipients} ผู้รับ)`);
     } catch (e) {

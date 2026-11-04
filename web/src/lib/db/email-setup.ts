@@ -21,6 +21,16 @@ export interface EmailAttachmentFile extends StoredFile {
   size: number;
 }
 
+export type EmailSetupTab = "daily" | "material" | "document";
+
+export interface EmailProfile {
+  id: string;
+  name: string;
+  title: string;
+  subject: string;
+  body: string;
+}
+
 export interface EmailSetup {
   contacts: EmailContact[];
   /** id ของ contact */
@@ -29,6 +39,8 @@ export interface EmailSetup {
   /** system = ใช้ Subject มาตรฐานของระบบ · custom = ใช้ข้อความใน subject */
   subject_mode: "system" | "custom";
   subject: string;
+  profiles: EmailProfile[];
+  selected_profile_id: string;
   attach_report_pdf: boolean;
   attach_photos: boolean;
   files: EmailAttachmentFile[];
@@ -49,6 +61,8 @@ export const blankEmailSetup = (): EmailSetup => ({
   cc: [],
   subject_mode: "system",
   subject: DEFAULT_EMAIL_SUBJECT,
+  profiles: [],
+  selected_profile_id: "",
   attach_report_pdf: true,
   attach_photos: false,
   files: [],
@@ -69,15 +83,18 @@ function toEmailSetup(value: unknown): EmailSetup {
     // รุ่นก่อนไม่มี subject_mode — ถ้าเคยแก้ Subject เองให้ถือเป็น custom
     subject_mode: d.subject_mode ?? (d.subject && d.subject !== DEFAULT_EMAIL_SUBJECT ? "custom" : "system"),
     subject: d.subject ?? blank.subject,
+    profiles: (d.profiles ?? []).filter((p) => p && p.id).map((p) => ({ id: p.id, name: p.name ?? "", title: p.title ?? "", subject: p.subject ?? "", body: p.body ?? "" })),
+    selected_profile_id: d.selected_profile_id ?? "",
     attach_report_pdf: d.attach_report_pdf ?? blank.attach_report_pdf,
     attach_photos: d.attach_photos ?? blank.attach_photos,
     files: d.files ?? [],
   };
 }
 
-export async function loadEmailSetup(projectId: string): Promise<EmailSetup> {
-  const config = await getDoc(emailSetupRef(projectId));
+export async function loadEmailSetup(projectId: string, tab: EmailSetupTab = "daily"): Promise<EmailSetup> {
+  const config = await getDoc(emailSetupRef(projectId, tab));
   if (config.exists()) return toEmailSetup(config.data());
+  if (tab !== "daily") return blankEmailSetup();
   const project = await getDoc(projectRef(projectId));
   if (!project.exists()) throw new DataError("โครงการนี้ถูกลบไปแล้ว");
   return toEmailSetup(project.get("email_setup"));
@@ -85,7 +102,8 @@ export async function loadEmailSetup(projectId: string): Promise<EmailSetup> {
 
 /** ไฟล์แนบทั้งหมดของการตั้งค่า — ใช้ตอนลบโครงการ */
 export async function emailSetupFiles(projectId: string): Promise<StoredFile[]> {
-  return (await loadEmailSetup(projectId).catch(() => blankEmailSetup())).files;
+  const setups = await Promise.all((["daily", "material", "document"] as const).map((tab) => loadEmailSetup(projectId, tab).catch(() => blankEmailSetup())));
+  return setups.flatMap((setup) => setup.files);
 }
 
 const attachmentPath = (projectId: string, fileName: string) =>
@@ -101,6 +119,7 @@ export async function saveEmailSetup(
   newFiles: File[],
   removed: EmailAttachmentFile[],
   actor: string,
+  tab: EmailSetupTab = "daily",
 ) {
   const uploaded: EmailAttachmentFile[] = [];
   try {
@@ -108,7 +127,7 @@ export async function saveEmailSetup(
       const stored = await uploadFile(attachmentPath(projectId, f.name), f);
       uploaded.push({ ...stored, file_name: f.name, size: f.size });
     }
-    await setDoc(emailSetupRef(projectId), {
+    await setDoc(emailSetupRef(projectId, tab), {
       ...setup,
       files: [...setup.files, ...uploaded],
       updated_at: serverTimestamp(),
@@ -119,10 +138,12 @@ export async function saveEmailSetup(
     throw e;
   }
   await deleteFiles(removed.map((r) => r.path));
+  const saved = { ...setup, files: [...setup.files, ...uploaded] };
   // ล้างฟิลด์รุ่นแรกในเอกสารโครงการ (ถ้ามี) — ไม่สำคัญถ้าพลาด เพราะ config มีแล้วจะอ่านจาก config ก่อน
-  await updateDoc(projectRef(projectId), {
+  if (tab === "daily") await updateDoc(projectRef(projectId), {
     email_setup: deleteField(),
     email_setup_updated_at: deleteField(),
     email_setup_updated_by: deleteField(),
   }).catch(() => {});
+  return saved;
 }

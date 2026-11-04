@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState, useTransition, type FormEvent } from "react";
 import { useAuth } from "@/lib/auth/context";
 import {
-  blankEmailSetup,
   DEFAULT_EMAIL_SUBJECT,
   EMAIL_SUBJECT_VARIABLES,
   isValidEmail,
@@ -12,6 +11,8 @@ import {
   type EmailAttachmentFile,
   type EmailContact,
   type EmailSetup,
+  type EmailSetupTab,
+  type EmailProfile,
 } from "@/lib/db/email-setup";
 import { newId } from "@/lib/db/common";
 import type { ProjectRecord } from "@/lib/db/projects";
@@ -20,6 +21,11 @@ import { formatFileSize } from "@/lib/format";
 import { MultiSelect } from "@/components/multi-select";
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
+const tabs: { id: EmailSetupTab; label: string }[] = [
+  { id: "daily", label: "Daily Report" },
+  { id: "material", label: "Material Request" },
+  { id: "document", label: "Document Approve" },
+];
 const blankContact = { name: "", email: "", company: "", position: "" };
 
 /** ตั้งค่ารายชื่อผู้รับ และเนื้อหาอีเมลรายงานประจำวันของโครงการ — เปิดเป็น modal ทันทีที่ render */
@@ -28,14 +34,19 @@ export function EmailSetupDialog({ projects, onClose }: { projects: ProjectRecor
   const dialogRef = useRef<HTMLDialogElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [projectId, setProjectId] = useState(projects[0]?.id ?? "");
-  const [v, setV] = useState<EmailSetup | null>(null);
+  const [tab, setTab] = useState<EmailSetupTab>("daily");
+  const [setups, setSetups] = useState<Record<EmailSetupTab, EmailSetup> | null>(null);
+  const v = setups?.[tab] ?? null;
   const [draft, setDraft] = useState(blankContact);
-  const [newFiles, setNewFiles] = useState<File[]>([]);
-  const [removed, setRemoved] = useState<EmailAttachmentFile[]>([]);
+  const [filesByTab, setFilesByTab] = useState<Record<EmailSetupTab, File[]>>({ daily: [], material: [], document: [] });
+  const [removedByTab, setRemovedByTab] = useState<Record<EmailSetupTab, EmailAttachmentFile[]>>({ daily: [], material: [], document: [] });
+  const newFiles = filesByTab[tab];
+  const setNewFiles = (update: File[] | ((files: File[]) => File[])) => setFilesByTab((prev) => ({ ...prev, [tab]: typeof update === "function" ? update(prev[tab]) : update }));
+  const setRemoved = (update: (files: EmailAttachmentFile[]) => EmailAttachmentFile[]) => setRemovedByTab((prev) => ({ ...prev, [tab]: update(prev[tab]) }));
   const [error, setError] = useState<string>();
   const [contactError, setContactError] = useState<string>();
   const [pending, startTransition] = useTransition();
-  const set = (patch: Partial<EmailSetup>) => setV((prev) => (prev ? { ...prev, ...patch } : prev));
+  const set = (patch: Partial<EmailSetup>) => setSetups((prev) => (prev ? { ...prev, [tab]: { ...prev[tab], ...patch } } : prev));
   const close = () => dialogRef.current?.close();
 
   useEffect(() => {
@@ -45,11 +56,11 @@ export function EmailSetupDialog({ projects, onClose }: { projects: ProjectRecor
   useEffect(() => {
     if (!projectId) return;
     let cancelled = false;
-    loadEmailSetup(projectId).then(
-      (setup) => !cancelled && setV(setup),
+    Promise.all(tabs.map(({ id }) => loadEmailSetup(projectId, id))).then(
+      ([daily, material, document]) => !cancelled && setSetups({ daily, material, document }),
       (e) => {
         if (cancelled) return;
-        setV(blankEmailSetup());
+        setSetups(null);
         setError("โหลดการตั้งค่าไม่สำเร็จ: " + firebaseErrorMessage(e));
       },
     );
@@ -61,9 +72,9 @@ export function EmailSetupDialog({ projects, onClose }: { projects: ProjectRecor
   // เปลี่ยนโครงการ = ทิ้งค่าที่แก้ค้างไว้ แล้วโหลดการตั้งค่าของโครงการใหม่
   function changeProject(id: string) {
     setProjectId(id);
-    setV(null);
-    setNewFiles([]);
-    setRemoved([]);
+    setSetups(null);
+    setFilesByTab({ daily: [], material: [], document: [] });
+    setRemovedByTab({ daily: [], material: [], document: [] });
     setError(undefined);
   }
 
@@ -93,15 +104,25 @@ export function EmailSetupDialog({ projects, onClose }: { projects: ProjectRecor
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!v || !userProfile) return;
-    const subject = v.subject_mode === "system" ? DEFAULT_EMAIL_SUBJECT : v.subject.trim();
-    if (!subject) return setError("กรุณาใส่ Subject");
-    if (v.to.length === 0) return setError("กรุณาเลือกผู้รับ (Sent to) อย่างน้อย 1 คน");
-    const input: EmailSetup = { ...v, subject, cc: v.cc.filter((id) => !v.to.includes(id)) };
+    if (!v || !setups || !userProfile) return;
+    for (const { id, label } of tabs) {
+      const setup = setups[id];
+      const selected = setup.profiles.find((p) => p.id === setup.selected_profile_id);
+      if (setup.profiles.some((p) => !p.name.trim() || !p.subject.trim())) return setError(label + ": กรุณาใส่ชื่อโปรไฟล์และ Subject ทุกโปรไฟล์");
+      if (setup.subject_mode === "custom" && !(selected?.subject ?? setup.subject).trim()) return setError(label + ": กรุณาใส่ Subject");
+    }
     setError(undefined);
     startTransition(async () => {
       try {
-        await saveEmailSetup(projectId, input, newFiles, removed, userProfile.email);
+        for (const { id } of tabs) {
+          const setup = setups[id];
+          const selected = setup.profiles.find((p) => p.id === setup.selected_profile_id);
+          const subject = setup.subject_mode === "system" ? DEFAULT_EMAIL_SUBJECT : (selected?.subject ?? setup.subject).trim();
+          const saved = await saveEmailSetup(projectId, { ...setup, subject, cc: setup.cc.filter((contactId) => !setup.to.includes(contactId)) }, filesByTab[id], removedByTab[id], userProfile.email, id);
+          setSetups((prev) => prev ? { ...prev, [id]: saved } : prev);
+          setFilesByTab((prev) => ({ ...prev, [id]: [] }));
+          setRemovedByTab((prev) => ({ ...prev, [id]: [] }));
+        }
         close();
       } catch (err) {
         setError("บันทึกไม่สำเร็จ: " + firebaseErrorMessage(err));
@@ -109,6 +130,12 @@ export function EmailSetupDialog({ projects, onClose }: { projects: ProjectRecor
     });
   }
 
+  const profile = v?.profiles.find((p) => p.id === v.selected_profile_id);
+  const updateProfile = (patch: Partial<EmailProfile>) => {
+    if (!v || !profile) return;
+    const updated = { ...profile, ...patch };
+    set({ profiles: v.profiles.map((p) => p.id === profile.id ? updated : p), subject: updated.subject });
+  };
   const options = (v?.contacts ?? []).map((c) => ({ value: c.id, label: c.name, hint: [c.email, c.company, c.position].filter(Boolean).join(" · ") }));
 
   return (
@@ -138,6 +165,9 @@ export function EmailSetupDialog({ projects, onClose }: { projects: ProjectRecor
             </div>
           )}
 
+          <div role="tablist" aria-label="ประเภทอีเมล" className="flex flex-wrap gap-2 border-b border-border">
+            {tabs.map((item) => <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} className={`px-3 py-2 text-sm ${tab === item.id ? "border-b-2 border-primary font-semibold text-primary" : "text-muted"}`} onClick={() => { setTab(item.id); setError(undefined); setDraft(blankContact); setContactError(undefined); }}>{item.label}</button>)}
+          </div>
           {!v ? (
             <p className="py-6 text-center text-sm text-muted">กำลังโหลด...</p>
           ) : (
@@ -198,7 +228,7 @@ export function EmailSetupDialog({ projects, onClose }: { projects: ProjectRecor
               <section className="space-y-3">
                 <h3 className="font-semibold">2. ตั้งค่าเนื้อหา</h3>
                 <div>
-                  <div className="label">Sent to *</div>
+                  <div className="label">Sent to</div>
                   <MultiSelect label="Sent to" options={options} value={v.to} onChange={(to) => set({ to, cc: v.cc.filter((id) => !to.includes(id)) })} placeholder="เลือกจากรายชื่อ" />
                 </div>
                 <div>
@@ -220,12 +250,27 @@ export function EmailSetupDialog({ projects, onClose }: { projects: ProjectRecor
                   {v.subject_mode === "system" ? (
                     <p className="input bg-surface-2 text-muted" aria-label="Subject ของระบบ">{DEFAULT_EMAIL_SUBJECT}</p>
                   ) : (
-                    <textarea id="es-subject" aria-labelledby="es-subject-label" className="input" rows={3} value={v.subject} maxLength={500} onChange={(e) => set({ subject: e.target.value })} />
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap gap-2">
+                        <select className="input flex-1" aria-label="เลือกโปรไฟล์อีเมล" value={profile?.id ?? ""} onChange={(e) => { const selected = v.profiles.find((p) => p.id === e.target.value); set({ selected_profile_id: e.target.value, ...(selected ? { subject: selected.subject } : {}) }); }}>
+                          <option value="">Subject เดิม</option>
+                          {v.profiles.map((p) => <option key={p.id} value={p.id}>{p.name || "โปรไฟล์ใหม่"}</option>)}
+                        </select>
+                        <button type="button" className="btn" onClick={() => { const p = { id: newId(), name: "", title: "", subject: v.subject, body: "" }; set({ profiles: [...v.profiles, p], selected_profile_id: p.id }); }}>+ สร้างโปรไฟล์</button>
+                        {profile && <button type="button" className="btn text-bad" onClick={() => set({ profiles: v.profiles.filter((p) => p.id !== profile.id), selected_profile_id: "" })}>ลบโปรไฟล์</button>}
+                      </div>
+                      {profile && <>
+                        <label className="block"><span className="label">ชื่อโปรไฟล์ *</span><input className="input" value={profile.name} maxLength={100} onChange={(e) => updateProfile({ name: e.target.value })} /></label>
+                        <label className="block"><span className="label">Title</span><input className="input" value={profile.title} maxLength={500} onChange={(e) => updateProfile({ title: e.target.value })} /></label>
+                      </>}
+                      <label className="block"><span className="label">Subject *</span><textarea id="es-subject" className="input" rows={2} value={profile?.subject ?? v.subject} maxLength={500} onChange={(e) => profile ? updateProfile({ subject: e.target.value }) : set({ subject: e.target.value })} /></label>
+                      {profile && <label className="block"><span className="label">เนื้อหา</span><textarea className="input" rows={6} value={profile.body} maxLength={20000} onChange={(e) => updateProfile({ body: e.target.value })} /></label>}
+                    </div>
                   )}
                   <div className="mt-1 flex flex-wrap items-center gap-1 text-xs text-muted">
                     ตัวแปร:
                     {EMAIL_SUBJECT_VARIABLES.map((x) => (
-                      <button key={x.key} type="button" disabled={v.subject_mode === "system"} className="rounded bg-primary-soft px-1.5 font-mono text-primary hover:underline disabled:opacity-50 disabled:no-underline" title={x.label} onClick={() => set({ subject: `${v.subject}${v.subject && !v.subject.endsWith(" ") ? " " : ""}${x.key}` })}>
+                      <button key={x.key} type="button" disabled={v.subject_mode === "system"} className="rounded bg-primary-soft px-1.5 font-mono text-primary hover:underline disabled:opacity-50 disabled:no-underline" title={x.label} onClick={() => { const current = profile?.subject ?? v.subject; const subject = `${current}${current && !current.endsWith(" ") ? " " : ""}${x.key}`; if (profile) updateProfile({ subject }); else set({ subject }); }}>
                         {x.key}
                       </button>
                     ))}
@@ -233,7 +278,7 @@ export function EmailSetupDialog({ projects, onClose }: { projects: ProjectRecor
                 </div>
                 <div>
                   <div className="label">Attachment</div>
-                  <div className="space-y-1.5 text-sm">
+                  {tab === "daily" && <div className="space-y-1.5 text-sm">
                     <label className="flex items-center gap-2">
                       <input type="checkbox" checked={v.attach_report_pdf} onChange={(e) => set({ attach_report_pdf: e.target.checked })} />
                       แนบรายงานเป็นไฟล์ PDF
@@ -242,8 +287,8 @@ export function EmailSetupDialog({ projects, onClose }: { projects: ProjectRecor
                       <input type="checkbox" checked={v.attach_photos} onChange={(e) => set({ attach_photos: e.target.checked })} />
                       แนบรูปถ่ายหน้างาน
                     </label>
-                  </div>
-                  <p className="mt-1 text-xs text-muted">ไฟล์เพิ่มเติมที่อัปโหลดไว้จะถูกแนบทุกครั้ง ส่วนรูปถ่ายจะถูกแนบเมื่อเลือกตัวเลือกด้านบน</p>
+                  </div>}
+                  <p className="mt-1 text-xs text-muted">{tab === "daily" ? "ไฟล์เพิ่มเติมที่อัปโหลดไว้จะถูกแนบทุกครั้ง ส่วนรูปถ่ายจะถูกแนบเมื่อเลือกตัวเลือกด้านบน" : "ไฟล์เพิ่มเติมสำหรับแท็บนี้"}</p>
                   {(v.files.length > 0 || newFiles.length > 0) && (
                     <ul className="mt-2 space-y-1">
                       {v.files.map((f) => (

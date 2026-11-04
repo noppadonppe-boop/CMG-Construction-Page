@@ -18,7 +18,7 @@ export function paperMm(size: PaperSize, orientation: Orientation) {
   return orientation === "portrait" ? p : { w: p.h, h: p.w };
 }
 
-export const SLOT_KINDS = { text: "ข้อความ", image: "รูปภาพ", table: "ตาราง", calendar: "ปฏิทิน", custom: "Custom style" } as const;
+export const SLOT_KINDS = { text: "ข้อความ", image: "รูปภาพ", shape: "Shape / ไฮไลต์", table: "ตาราง", calendar: "ปฏิทิน", custom: "Custom style" } as const;
 export type SlotKind = keyof typeof SLOT_KINDS;
 export const CUSTOM_STYLES = { caption: "รูป + คำบรรยาย", sign: "ช่องลงนาม", note: "กล่องหมายเหตุ" } as const;
 export type CustomStyle = keyof typeof CUSTOM_STYLES;
@@ -69,6 +69,10 @@ export interface LayoutSlot {
   /** ขนาดตัวอักษรหน่วย pt; null ใช้ขนาดเดิมของช่อง */
   text_font_size: number | null;
   text_color: string;
+  shape_type: "rectangle" | "ellipse";
+  shape_color: string;
+  /** ความโปร่งใส 0 = ทึบ, 100 = โปร่งใส */
+  shape_transparency: number;
 }
 
 export interface LayoutPage {
@@ -89,6 +93,8 @@ export interface LayoutTemplate {
 
 export const KEYBOARD_STEP = 0.5;
 export const MIN_SLOT = 10;
+/** กล่องข้อความย่อได้ละเอียดเพื่อวางตัวอักษรในช่องตาราง */
+export const MIN_TEXT_SLOT = 1;
 export const MAX_SLOTS = 100;
 export const SLOT_COUNTS = [1, 2, 3, 4, 5, 6, 8, 9, 12];
 
@@ -120,6 +126,9 @@ export function newSlot(patch: Partial<LayoutSlot> = {}): LayoutSlot {
     text_font: "default",
     text_font_size: null,
     text_color: "",
+    shape_type: "rectangle",
+    shape_color: "#ffff00",
+    shape_transparency: 50,
     ...patch,
   };
 }
@@ -150,12 +159,13 @@ export function newPage(size: PaperSize = "A4", orientation: Orientation = "port
 /** ย้าย/ขยายช่องอย่างอิสระ โดยจำกัดขอบเขตตามชนิดของช่อง */
 export function placeSlot(s: LayoutSlot, rect: { x: number; y: number; w: number; h: number }): LayoutSlot {
   const image = s.kind === "image" || (s.kind === "custom" && s.custom === "caption");
-  const w = clamp(rect.w, MIN_SLOT, image ? 300 : 100);
-  const h = clamp(rect.h, MIN_SLOT, image ? 300 : 100);
+  const min = s.kind === "text" || s.kind === "shape" ? MIN_TEXT_SLOT : MIN_SLOT;
+  const w = clamp(rect.w, min, image ? 300 : 100);
+  const h = clamp(rect.h, min, image ? 300 : 100);
   return { ...s, w, h, x: clamp(rect.x, image ? MIN_SLOT - w : 0, image ? 100 - MIN_SLOT : 100 - w), y: clamp(rect.y, image ? MIN_SLOT - h : 0, image ? 100 - MIN_SLOT : 100 - h) };
 }
 
-export const hasContent = (s: LayoutSlot) => Boolean(s.variable || s.image || s.text.trim() || s.cells.some((r) => r.some((c) => c.trim())));
+export const hasContent = (s: LayoutSlot) => Boolean(s.kind === "shape" || s.variable || s.image || s.text.trim() || s.cells.some((r) => r.some((c) => c.trim())));
 
 /** แม่แบบเก็บรูปและตำแหน่งไว้; keepText ควบคุมข้อความที่พิมพ์เอง */
 export function toTemplatePages(pages: LayoutPage[], keepText: boolean): LayoutPage[] {
@@ -213,6 +223,9 @@ function toSlot(v: Loose): LayoutSlot {
     text_font: pick(v.text_font, Object.keys(TEXT_FONTS) as TextFont[], "default"),
     text_font_size: typeof v.text_font_size === "number" && Number.isFinite(v.text_font_size) ? clamp(v.text_font_size, 6, 72) : null,
     text_color: typeof v.text_color === "string" && /^#[0-9a-fA-F]{6}$/.test(v.text_color) ? v.text_color : "",
+    shape_type: pick(v.shape_type, ["rectangle", "ellipse"] as const, "rectangle"),
+    shape_color: typeof v.shape_color === "string" && /^#[0-9a-fA-F]{6}$/.test(v.shape_color) ? v.shape_color : "#ffff00",
+    shape_transparency: typeof v.shape_transparency === "number" && Number.isFinite(v.shape_transparency) ? clamp(v.shape_transparency, 0, 100) : 50,
   };
 }
 

@@ -41,7 +41,7 @@ export function DcrDocument({ project, settings, r, date, lang = "th" }: { proje
   const photos = r.progress.flatMap((p, i) => p.photos.map((ph, j) => ({ ...ph, label: `${i + 1}.${j + 1}`, zone: p.zone })));
   const L = sectionLetters(r.form_standard?.sections);
   const code = r.report_no ? reportDocNo(r, project.code) : "—";
-  const variables = layoutVariables(r, { project_name: settings.project_name || project.name, project_no: settings.project_no || project.code, client: settings.client.name || project.client || "", consultant: consultants.map(c => c.name).join(", "), contractor: settings.contractor.name, subcontractors: subs.map(s => s.name).join(", "), location: project.location ?? "", doc_no: code });
+  const variables = layoutVariables(r, { project_name: settings.project_name || project.name, project_no: settings.project_no || project.code, client: settings.client.name || project.client || "", consultant: consultants.map(c => c.name).join(", "), contractor: settings.contractor.name, subcontractors: subs.map(s => s.name).join(", "), location: project.location ?? "", doc_no: code }, lang);
   const fmt = (n: number) => n.toLocaleString(reportLocale(lang));
   const head = (key: DailySectionKey) => ({ title: t.sections[key].title, en: t.sections[key].sub });
 
@@ -71,7 +71,7 @@ export function DcrDocument({ project, settings, r, date, lang = "th" }: { proje
       )}
 
       {/* A. ข้อมูลโครงการ */}
-      <Section letter="A" {...head("project")}>
+      <Section letter="A" {...head("project")} sectionKey="project">
         <table className="dcr dcr-info">
           <colgroup><col style={{ width: "16%" }} /><col /><col style={{ width: "16%" }} /><col style={{ width: "24%" }} /></colgroup>
           <tbody>
@@ -89,7 +89,7 @@ export function DcrDocument({ project, settings, r, date, lang = "th" }: { proje
       </Section>
 
       {/* B. สภาพอากาศ */}
-      {L.weather && (<Section letter={L.weather} {...head("weather")}>
+      {L.weather && (<Section letter={L.weather} {...head("weather")} sectionKey="weather">
         <table className="dcr">
           <thead>
             <tr>
@@ -124,11 +124,10 @@ export function DcrDocument({ project, settings, r, date, lang = "th" }: { proje
       </Section>)}
 
       {/* C. กำลังคน (ซ้าย) · เครื่องจักร (ขวา) */}
-      {L.manpower && (<Section letter={L.manpower} {...head("manpower")}>
+      {L.manpower && (<Section letter={L.manpower} {...head("manpower")} sectionKey="manpower">
         <div className="grid gap-3 sm:grid-cols-2 print:grid-cols-2">
           <div className="space-y-2">
             <Headcount t={t} title={t.indirect} rows={r.manpower.indirect} />
-            <Headcount t={t} title={t.direct} rows={r.manpower.direct} columns={r.manpower.direct_columns} />
           </div>
           <div className="space-y-2">
             <table className="dcr">
@@ -165,6 +164,9 @@ export function DcrDocument({ project, settings, r, date, lang = "th" }: { proje
             )}
           </div>
         </div>
+        <div className="mt-3 min-w-0">
+          <Headcount t={t} title={t.direct} rows={r.manpower.direct} columns={r.manpower.direct_columns} />
+        </div>
         <div className="mt-2 grid grid-cols-4 overflow-hidden rounded-sm border border-text/20 text-center">
           <Stat label={t.statIndirect} value={`${totals.indirect.present} / ${totals.indirect.total}`} unit={t.people} />
           <Stat label={t.statDirect} value={`${totals.direct.present} / ${totals.direct.total}`} unit={t.people} />
@@ -174,7 +176,7 @@ export function DcrDocument({ project, settings, r, date, lang = "th" }: { proje
       </Section>)}
 
       {/* D. งานที่ทำวันนี้ */}
-      {L.activities && (<Section letter={L.activities} {...head("activities")}>
+      {L.activities && (<Section letter={L.activities} {...head("activities")} sectionKey="activities">
         <Lines empty={t.noActivities}>
           {r.progress.filter((p) => p.description || p.zone).map((p, i) => (
             <Line key={p.id} n={i + 1}>
@@ -204,7 +206,7 @@ export function DcrDocument({ project, settings, r, date, lang = "th" }: { proje
       </Section>)}
 
       {/* E. ปัญหาและอุปสรรค */}
-      {L.issues && (<Section letter={L.issues} {...head("issues")}>
+      {L.issues && (<Section letter={L.issues} {...head("issues")} sectionKey="issues">
         <Lines empty={t.noIssues}>
           {r.issues.map((x, i) => (
             <Line key={i} n={i + 1}>
@@ -222,7 +224,7 @@ export function DcrDocument({ project, settings, r, date, lang = "th" }: { proje
       </Section>)}
 
       {/* F. แผนงานพรุ่งนี้ */}
-      {L.tomorrow && (<Section letter={L.tomorrow} {...head("tomorrow")}>
+      {L.tomorrow && (<Section letter={L.tomorrow} {...head("tomorrow")} sectionKey="tomorrow">
         <Lines empty={t.noPlan}>
           {r.tomorrow.map((p, i) => (
             <Line key={i} n={i + 1}>
@@ -247,7 +249,7 @@ export function DcrDocument({ project, settings, r, date, lang = "th" }: { proje
       </div>
 
       {/* G. ภาพประกอบ: ขึ้นหน้าใหม่เมื่อพิมพ์ */}
-      {L.attachments && (<Section letter={L.attachments} {...head("attachments")} className={photos.length ? "print-break mt-4" : "mt-4"}>
+      {L.attachments && (<Section letter={L.attachments} {...head("attachments")} sectionKey="attachments" className={photos.length ? "print-break mt-4" : "mt-4"}>
         {photos.length === 0 ? (
           <p className="rounded-sm border border-dashed border-text/25 py-6 text-center text-muted">{t.noAttachments}</p>
         ) : (
@@ -266,6 +268,7 @@ export function DcrDocument({ project, settings, r, date, lang = "th" }: { proje
       {L.layout && r.layout_pages.map((page, i) => (
         <LayoutPaper
           key={page.id}
+          pdfSection="layout"
           page={page}
           letter={L.layout!}
           title={`${t.sections.layout.title}${r.layout_pages.length > 1 ? ` (${L.layout}-${i + 1})` : ""}`}
@@ -274,7 +277,7 @@ export function DcrDocument({ project, settings, r, date, lang = "th" }: { proje
         >
           {page.slots.map((s) => (
             <div key={s.id} style={slotBox(s)}>
-              <SlotContent slot={s} variableValue={variables.find(v => v.key === s.variable)?.value} />
+              <SlotContent slot={s} lang={lang} variableValue={variables.find(v => v.key === s.variable)?.value} />
             </div>
           ))}
         </LayoutPaper>
@@ -301,9 +304,9 @@ function LogoCell({ label, companies }: { label: string; companies: { id: string
   );
 }
 
-function Section({ letter, title, en, children, className = "" }: { letter: string; title: string; en: string; children: ReactNode; className?: string }) {
+function Section({ letter, title, en, sectionKey, children, className = "" }: { letter: string; title: string; en: string; sectionKey: DailySectionKey; children: ReactNode; className?: string }) {
   return (
-    <section className={`mb-3 ${className}`}>
+    <section data-pdf-section={sectionKey} className={`mb-3 ${className}`}>
       <div className="mb-1.5 flex items-center gap-2 border-b-2 border-primary pb-1">
         <span className="dcr-letter">{letter}</span>
         <span className="font-semibold">{title}</span>
@@ -320,7 +323,11 @@ function Headcount({ t, title, rows, columns = [] }: { t: Text; title: string; r
   const span = 4 + columns.length;
   return (
     <table className="dcr">
-      <colgroup><col />{columns.map((c) => <col key={c.id} style={{ width: "13%" }} />)}<col style={{ width: "14%" }} /><col style={{ width: "17%" }} /><col style={{ width: "15%" }} /></colgroup>
+      <colgroup>
+        <col style={columns.length ? { width: "30%" } : undefined} />
+        {columns.map((c) => <col key={c.id} style={{ width: `${70 / (columns.length + 3)}%` }} />)}
+        {columns.length ? Array.from({ length: 3 }, (_, i) => <col key={i} style={{ width: `${70 / (columns.length + 3)}%` }} />) : <><col style={{ width: "14%" }} /><col style={{ width: "17%" }} /><col style={{ width: "15%" }} /></>}
+      </colgroup>
       <thead>
         <tr><th colSpan={span} className="dcr-sub">{title}</th></tr>
         <tr><th>{t.position}</th>{columns.map((c) => <th key={c.id} className="num">{c.name}</th>)}<th className="num">{t.total}</th><th className="num">{t.present}</th><th className="num">{t.absent}</th></tr>

@@ -2,6 +2,7 @@
 // หน้ากระดาษของหัวข้อ H — ใช้ทั้งในฟอร์มแก้ไข (มีตัวจับลาก) และหน้ารายงาน/พิมพ์
 // ขนาดทุกอย่างคิดเป็น "มม. บนกระดาษ" ผ่านตัวแปร --mm: จอ = ย่อตามความกว้าง, พิมพ์ = 1mm จริง (ดู .dcr-hpage ใน globals.css)
 import type { CSSProperties, ReactNode, Ref } from "react";
+import { DCR_TEXT, type ReportLang } from "@/lib/dcr-i18n";
 import { textRuns } from "@/lib/dcr-text-format";
 import { PAGE_MARGIN_MM, TEXT_SIZE_MM, TEXT_FONT_FAMILIES, isCovered, mergeAt, paperMm, type LayoutPage, type LayoutSlot } from "@/lib/dcr-layout";
 
@@ -15,6 +16,7 @@ export function LayoutPaper({
   title,
   right,
   bodyRef,
+  pdfSection,
   className = "",
   children,
 }: {
@@ -24,6 +26,7 @@ export function LayoutPaper({
   /** ข้อความชิดขวาของแถบหัว เช่น Doc. no. · หน้า 1/2 */
   right: ReactNode;
   bodyRef?: Ref<HTMLDivElement>;
+  pdfSection?: string;
   className?: string;
   /** ช่องทั้งหมด (วางแบบ absolute ด้วย slotBox) */
   children: ReactNode;
@@ -33,7 +36,7 @@ export function LayoutPaper({
   // หัก 1 มม. กันเนื้อหาล้นไปหน้าถัดไปตอนพิมพ์
   const h = paper.h - PAGE_MARGIN_MM * 2 - 1;
   return (
-    <div className={`dcr-hpage-wrap dcr-paper-${page.size.toLowerCase()}-${page.orientation} ${className}`} style={{ "--pw": w, "--ph": h } as CSSProperties}>
+    <div data-pdf-section={pdfSection} className={`dcr-hpage-wrap dcr-paper-${page.size.toLowerCase()}-${page.orientation} ${className}`} style={{ "--pw": w, "--ph": h } as CSSProperties}>
       <div className="dcr-hpage" style={{ aspectRatio: `${w} / ${h}` }}>
         <div className="absolute inset-x-0 top-0 flex items-center gap-[calc(var(--mm)*2)] border-b-2 border-primary" style={{ height: mm(HEADER_MM) }}>
           <span className="dcr-letter" style={{ width: mm(5), height: mm(5), fontSize: mm(2.8) }}>{letter}</span>
@@ -51,24 +54,25 @@ export function LayoutPaper({
 export const mm = (n: number) => `calc(var(--mm) * ${n})`;
 
 /** กรอบตำแหน่งของช่อง (% ของ Body) — เว้นระยะครึ่งช่องไฟรอบช่องให้ช่องติดกันไม่ทับเส้น */
-export const slotBox = (r: { x: number; y: number; w: number; h: number }): CSSProperties => ({
+export const slotBox = (r: { x: number; y: number; w: number; h: number; kind?: LayoutSlot["kind"] }): CSSProperties => ({
   position: "absolute",
   left: `${r.x}%`,
   top: `${r.y}%`,
   width: `${r.w}%`,
   height: `${r.h}%`,
-  padding: mm(0.75),
+  padding: mm(r.kind === "text" || r.kind === "shape" ? 0.15 : 0.75),
 });
 
 /** เนื้อหาของช่อง 1 ช่อง — src = รูปที่จะแสดง (รูปที่บันทึกแล้ว หรือ preview ที่ยังไม่อัปโหลด) */
-export function SlotContent({ slot: s, src, placeholder, variableValue }: { slot: LayoutSlot; src?: string | null; placeholder?: ReactNode; variableValue?: string }) {
+export function SlotContent({ slot: s, src, placeholder, variableValue, lang = "th", editingCell, onEditCell, onChangeCell, onFinishCell, onSelectTable }: { slot: LayoutSlot; src?: string | null; placeholder?: ReactNode; variableValue?: string; lang?: ReportLang; editingCell?: { r: number; c: number }; onEditCell?: (r: number, c: number) => void; onChangeCell?: (r: number, c: number, value: string) => void; onFinishCell?: () => void; onSelectTable?: () => void }) {
+  const t = DCR_TEXT[lang];
   const style: CSSProperties = {
     fontSize: mm(s.kind === "text" && s.text_font_size != null ? s.text_font_size / 2.83464567 : TEXT_SIZE_MM[s.size]),
     fontFamily: s.kind === "text" ? TEXT_FONT_FAMILIES[s.text_font] : undefined,
     color: s.kind === "text" ? s.text_color || undefined : undefined,
     textAlign: s.align,
-    border: s.border ? `${mm(0.3)} solid color-mix(in srgb, var(--text) 35%, transparent)` : undefined,
-    background: s.shade ? "var(--surface-2)" : undefined,
+    border: s.kind !== "shape" && s.border ? `${mm(0.3)} solid color-mix(in srgb, var(--text) 35%, transparent)` : undefined,
+    background: s.kind !== "shape" && s.shade ? "var(--surface-2)" : undefined,
   };
   const pad = { padding: `${mm(1.2)} ${mm(1.6)}` };
   const image = src ?? s.image?.url ?? null;
@@ -79,9 +83,12 @@ export function SlotContent({ slot: s, src, placeholder, variableValue }: { slot
   );
 
   const body = (() => {
+    if (s.kind === "shape") {
+      return <div className="size-full" style={{ backgroundColor: s.shape_color, opacity: 1 - s.shape_transparency / 100, border: s.border ? `${mm(0.3)} solid ${s.shape_color}` : undefined, borderRadius: s.shape_type === "ellipse" ? "50%" : undefined, printColorAdjust: "exact" }} />;
+    }
     if (s.kind === "text") {
       return (
-        <div className="size-full overflow-hidden whitespace-pre-wrap" style={{ ...pad, overflowWrap: "anywhere", wordBreak: "break-word" }}>
+        <div className="size-full overflow-hidden whitespace-pre-wrap" style={{ padding: mm(0.2), overflowWrap: "anywhere", wordBreak: "break-word" }}>
           {s.title && <div className="font-semibold">{s.title}</div>}
           {s.variable ? (variableValue || placeholder || "—") : s.text ? textRuns(s.text, s.text_marks ?? []).map(run => <span key={run.start} style={{ fontSize: run.size != null ? mm(run.size / 2.83464567) : undefined, color: run.color || undefined }}>{run.text}</span>) : (!s.title && placeholder)}
         </div>
@@ -92,13 +99,13 @@ export function SlotContent({ slot: s, src, placeholder, variableValue }: { slot
       const [year, mon] = month.split("-").map(Number);
       const offset = month ? new Date(year, mon - 1, 1).getDay() : 0;
       const days = month ? new Date(year, mon, 0).getDate() : 0;
-      return <div className="size-full overflow-hidden" style={pad}><div className="text-center font-semibold">{month || "เลือกเดือน"}</div><div className="grid grid-cols-7 text-center">{["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"].map(d => <b key={d}>{d}</b>)}{Array.from({length: offset + days}, (_, i) => <span key={i}>{i >= offset ? i - offset + 1 : ""}</span>)}</div></div>;
+      return <div className="size-full overflow-hidden" style={pad}><div className="text-center font-semibold">{month || ({ th: "เลือกเดือน", en: "Select month", zh: "选择月份" }[lang])}</div><div className="grid grid-cols-7 text-center">{({ th: ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"], en: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], zh: ["日", "一", "二", "三", "四", "五", "六"] }[lang]).map(d => <b key={d}>{d}</b>)}{Array.from({length: offset + days}, (_, i) => <span key={i}>{i >= offset ? i - offset + 1 : ""}</span>)}</div></div>;
     }
     if (s.kind === "table") {
       return (
         <div className="size-full overflow-hidden" style={pad}>
           {s.title && <div className="font-semibold" style={{ marginBottom: mm(0.8) }}>{s.title}</div>}
-          <SlotTable slot={s} />
+          <SlotTable slot={s} editingCell={editingCell} onEditCell={onEditCell} onChangeCell={onChangeCell} onFinishCell={onFinishCell} onSelectTable={onSelectTable} />
         </div>
       );
     }
@@ -121,17 +128,17 @@ export function SlotContent({ slot: s, src, placeholder, variableValue }: { slot
       case "sign":
         return (
           <div className="flex size-full flex-col text-center" style={pad}>
-            <div className="font-semibold">{s.title || "ลงนาม"}</div>
+            <div className="font-semibold">{s.title || ({ th: "ลงนาม", en: "Signature", zh: "签名" }[lang])}</div>
             <div className="min-h-0 flex-1" />
             <div className="mx-auto w-4/5 border-b border-dotted border-text/50" />
             <div style={{ marginTop: mm(0.8) }}>{s.text ? `( ${s.text} )` : "(..............................)"}</div>
-            <div className="text-muted" style={{ fontSize: mm(2.4) }}>วันที่ ......../......../........</div>
+            <div className="text-muted" style={{ fontSize: mm(2.4) }}>{t.dateBlank}</div>
           </div>
         );
       case "note":
         return (
           <div className="flex size-full flex-col overflow-hidden">
-            <div className="bg-primary-soft font-semibold text-primary" style={{ ...pad, paddingBlock: mm(0.8) }}>{s.title || "หมายเหตุ"}</div>
+            <div className="bg-primary-soft font-semibold text-primary" style={{ ...pad, paddingBlock: mm(0.8) }}>{s.title || t.remark}</div>
             <div className="min-h-0 flex-1 overflow-hidden whitespace-pre-wrap" style={pad}>{s.text || placeholder}</div>
           </div>
         );
@@ -151,7 +158,13 @@ export function SlotTable({
   selected,
   onCell,
   className = "",
+  editingCell, onEditCell, onChangeCell, onFinishCell, onSelectTable,
 }: {
+  editingCell?: { r: number; c: number };
+  onEditCell?: (r: number, c: number) => void;
+  onChangeCell?: (r: number, c: number, value: string) => void;
+  onFinishCell?: () => void;
+  onSelectTable?: () => void;
   slot: Pick<LayoutSlot, "cells" | "merges" | "header" | "align" | "size">;
   selected?: (r: number, c: number) => boolean;
   onCell?: { down: (r: number, c: number, shift: boolean) => void; enter: (r: number, c: number) => void };
@@ -176,10 +189,11 @@ export function SlotTable({
                   colSpan={m?.cs}
                   className={`border align-top whitespace-pre-wrap ${head ? "bg-surface-2 font-semibold" : "font-normal"} ${on ? "bg-primary-soft! text-primary outline-2 -outline-offset-2 outline-primary" : ""} ${editing ? "cursor-pointer border-border" : "border-text/30"}`}
                   style={editing ? { textAlign: s.align, padding: "2px 4px", height: 24 } : { padding: `${mm(0.5)} ${mm(1)}`, height: mm(TEXT_SIZE_MM[s.size] * 1.9), textAlign: s.align }}
-                  onPointerDown={onCell && ((e) => { e.preventDefault(); onCell.down(r, c, e.shiftKey); })}
+                  onPointerDown={onCell ? ((e) => { e.preventDefault(); onCell.down(r, c, e.shiftKey); }) : onSelectTable ? ((e) => { e.stopPropagation(); onSelectTable(); }) : undefined}
                   onPointerEnter={onCell && (() => onCell.enter(r, c))}
+                  onDoubleClick={onEditCell && ((e) => { e.stopPropagation(); onEditCell(r, c); })}
                 >
-                  {text || (editing ? "\u00a0" : "")}
+                  {editingCell?.r === r && editingCell.c === c ? <textarea autoFocus aria-label={`แก้ไขเซลล์แถว ${r + 1} คอลัมน์ ${c + 1}`} className="w-full min-h-[2em] resize-y bg-white text-black select-text" value={text} onPointerDown={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()} onChange={e => onChangeCell?.(r, c, e.target.value)} onBlur={onFinishCell} /> : text || (editing ? "\u00a0" : "")}
                 </Cell>
               );
             })}

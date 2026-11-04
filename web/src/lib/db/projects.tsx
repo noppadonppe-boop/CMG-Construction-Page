@@ -213,7 +213,7 @@ export async function deleteProject(id: string, code: string) {
     ...docs.flatMap((d) => [...((d.get("photos") ?? []) as StoredFile[]), ...((d.get("revisions") ?? []) as StoredFile[]), ...materialRequestFiles(d.data())]),
     ...emailFiles,
   ];
-  const refs = [...docs.map((d) => d.ref), emailSetupRef(id), projectCodeRef(code), projectRef(id)];
+  const refs = [...docs.map((d) => d.ref), emailSetupRef(id), emailSetupRef(id, "material"), emailSetupRef(id, "document"), projectCodeRef(code), projectRef(id)];
   // batch หนึ่งเขียนได้ไม่เกิน 500 รายการ — ลบข้อมูลลูกก่อน ตัวโครงการอยู่ชุดสุดท้าย
   for (let i = 0; i < refs.length; i += 500) {
     const batch = writeBatch(db());

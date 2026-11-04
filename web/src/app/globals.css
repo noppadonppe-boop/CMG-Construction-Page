@@ -333,6 +333,29 @@ textarea.dcr-cell {
   padding: 3px 4px;
   vertical-align: middle;
 }
+.dcr-direct-edit {
+  table-layout: fixed;
+}
+.dcr-direct-edit th,
+.dcr-direct-edit td {
+  padding: 3px 2px;
+  overflow-wrap: anywhere;
+}
+.dcr-direct-edit .dcr-cell {
+  min-width: 0;
+  padding-inline: 2px;
+}
+.dcr-direct-edit input[type="number"] {
+  appearance: textfield;
+}
+.dcr-direct-edit input[type="number"]::-webkit-inner-spin-button,
+.dcr-direct-edit input[type="number"]::-webkit-outer-spin-button {
+  appearance: none;
+  margin: 0;
+}
+.dcr-direct-edit th button {
+  max-width: 100%;
+}
 
 /* สวิตช์เปิด/ปิด (checkbox role="switch") */
 .dcr-switch {
