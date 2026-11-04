@@ -24,6 +24,11 @@ import type { ProjectRecord } from "@/lib/db/projects";
 import { firebaseErrorMessage } from "@/lib/firebase/errors";
 import { formatDate, formatDateTime, formatFileSize, todayInBangkok } from "@/lib/format";
 import { Pill } from "@/components/ui";
+import { MaterialSubmissionFields } from "@/components/material-submission-fields";
+import { MaterialSubmissionPreview } from "@/components/material-submission-preview";
+import { blankMaterialSubmission, cleanMaterialSubmission, materialRequestFieldErrors, materialReceiptFieldErrors, MaterialFieldValidationError, type MaterialFieldErrors } from "@/lib/material-submission";
+import { MaterialFieldError, materialFieldProps, focusMaterialError } from "@/components/material-field-error";
+import { useSubmitOnce } from "@/lib/use-submit-once";
 
 // Material Request form: 3 ตารางเรียงต่อกันในหน้าเดียว อ่านจากเอกสาร Request ชุดเดียวกัน
 //   1. Request — สร้างรายการขอเบิก (modal) แสดงสถานะ "รอรับของ"
@@ -59,6 +64,7 @@ export function MaterialRequestBoard({ project }: { project: ProjectRecord }) {
   const { requests, loading, error } = useMaterialRequests(project);
   const [query, setQuery] = useState("");
   const [requestDialogOpen, setRequestDialogOpen] = useState(false);
+  const [pdfRequest, setPdfRequest] = useState<MaterialRequest | null>(null);
   const [receivingId, setReceivingId] = useState<string | null>(null);
   const [historyId, setHistoryId] = useState<string | null>(null);
   const [timelineId, setTimelineId] = useState<string | null>(null);
@@ -69,7 +75,7 @@ export function MaterialRequestBoard({ project }: { project: ProjectRecord }) {
 
   const balances = new Map(requests.map((r) => [r.id, materialBalance(r, today)]));
   const q = query.trim().toLowerCase();
-  const shown = requests.filter((r) => !q || `${r.no} ${r.description} ${r.spec}`.toLowerCase().includes(q));
+  const shown = requests.filter((r) => !q || `${r.no} ${r.description} ${r.spec} ${r.submission?.document_no || ""} ${r.submission?.manufacturer || ""}`.toLowerCase().includes(q));
   // ตารางรับของ: รายการที่ยังรับไม่ครบขึ้นก่อน
   const toReceive = shown.toSorted((a, b) => Number(balances.get(a.id)!.remaining === 0) - Number(balances.get(b.id)!.remaining === 0));
   const outstanding = requests.filter((r) => balances.get(r.id)!.remaining > 0).length;
@@ -140,7 +146,7 @@ export function MaterialRequestBoard({ project }: { project: ProjectRecord }) {
         count={`${requests.length} รายการ`}
         actions={can("material.request") && <button type="button" className="btn btn-primary" onClick={() => setRequestDialogOpen(true)}>+ เพิ่ม Request</button>}
       >
-        {loading ? <Loading /> : <RequestTable requests={shown} balances={balances} onPick={pick} {...removeProps} />}
+        {loading ? <Loading /> : <RequestTable requests={shown} balances={balances} onPick={pick} onPdf={setPdfRequest} {...removeProps} />}
       </Section>
 
       <Section title="2. รับของ" count={`${outstanding} รายการรอรับ · กดแถวเพื่อดูประวัติการรับ`}>
@@ -185,8 +191,9 @@ export function MaterialRequestBoard({ project }: { project: ProjectRecord }) {
       </Section>
 
       {requestDialogOpen && (
-        <RequestDialog project={project} actor={actor} onClose={() => setRequestDialogOpen(false)} onSaved={(no) => setNotice(`เพิ่ม ${no} แล้ว — สถานะรอรับของ`)} />
+        <RequestDialog project={project} actor={actor} preparer={[userProfile?.firstName, userProfile?.lastName].filter(Boolean).join(" ")} onClose={() => setRequestDialogOpen(false)} onSaved={(no) => setNotice(`เพิ่ม ${no} แล้ว — เปิดเอกสารได้ที่ปุ่ม PDF ในตาราง Request`)} />
       )}
+      {pdfRequest && <MaterialSubmissionPreview project={project} request={pdfRequest} onClose={() => setPdfRequest(null)} />}
       {receiving && (
         <ReceiveDialog
           project={project}
@@ -268,12 +275,12 @@ function RemoveCell({ request, onRemove, removing }: RemoveProps & { request: Ma
   );
 }
 
-function RequestTable({ requests, balances, onPick, onRemove, removing }: { requests: MaterialRequest[]; balances: Map<string, MaterialBalance>; onPick: (r: MaterialRequest) => void } & RemoveProps) {
+function RequestTable({ requests, balances, onPick, onPdf, onRemove, removing }: { requests: MaterialRequest[]; balances: Map<string, MaterialBalance>; onPick: (r: MaterialRequest) => void; onPdf: (r: MaterialRequest) => void } & RemoveProps) {
   return (
     <>
       <Table
-        groups={[["ข้อมูลวัสดุ", 3, G_ITEM], ["การขอเบิก", 5, G_REQ], ["", onRemove ? 2 : 1, ""]]}
-        head={<><th>Request No.</th><th>Description</th><th>Spec</th><th>Unit</th><th className="text-right">Quantity</th><th>Require Schedule</th><th>Remark</th><th>ไฟล์แนบ</th><th>สถานะ</th>{onRemove && <th />}</>}
+        groups={[["ข้อมูลวัสดุ", 3, G_ITEM], ["การขอเบิก", 5, G_REQ], ["", onRemove ? 3 : 2, ""]]}
+        head={<><th>Request No. / Doc. No.</th><th>Description</th><th>Spec</th><th>Unit</th><th className="text-right">Quantity</th><th>Require Schedule</th><th>Remark</th><th>ไฟล์แนบ</th><th>สถานะ</th><th>เอกสาร</th>{onRemove && <th />}</>}
         empty={requests.length === 0}
       >
         {requests.map((r) => {
@@ -282,6 +289,7 @@ function RequestTable({ requests, balances, onPick, onRemove, removing }: { requ
             <tr key={r.id} className="border-t border-border">
               <td className="px-3 py-2">
                 <button type="button" className="font-medium whitespace-nowrap text-primary underline-offset-2 hover:underline" onClick={() => onPick(r)}>{r.no}</button>
+                {r.submission && <div className="mt-1 text-xs text-muted">{r.submission.document_no || r.no} · {r.submission.revision}</div>}
               </td>
               <td className="px-3 py-2">{r.description}</td>
               <td className="px-3 py-2 text-muted">{r.spec || "–"}</td>
@@ -291,6 +299,7 @@ function RequestTable({ requests, balances, onPick, onRemove, removing }: { requ
               <td className="px-3 py-2 text-muted">{r.remark || "–"}</td>
               <td className="max-w-48 px-3 py-2"><FileLinks files={r.files} /></td>
               <td className="px-3 py-2"><Pill tone={b.status.tone}>{b.status.label}</Pill></td>
+              <td className="px-3 py-2"><button type="button" className="btn px-3 py-1 text-xs" onClick={() => onPdf(r)} aria-label={`ดู PDF ${r.no}`}>PDF</button></td>
               <RemoveCell request={r} onRemove={onRemove} removing={removing} />
             </tr>
           );
@@ -563,6 +572,9 @@ function Modal({
   submitLabel,
   onSubmit,
   onClose,
+  footerActions,
+  fieldErrors = {},
+  wide = false,
   children,
 }: {
   dialogRef: RefObject<HTMLDialogElement | null>;
@@ -574,6 +586,9 @@ function Modal({
   submitLabel: string;
   onSubmit: (e: FormEvent) => void;
   onClose: () => void;
+  footerActions?: ReactNode;
+  fieldErrors?: MaterialFieldErrors;
+  wide?: boolean;
   children: ReactNode;
 }) {
   const close = () => dialogRef.current?.close();
@@ -586,9 +601,9 @@ function Modal({
       ref={dialogRef}
       onClose={onClose}
       onCancel={(e) => pending && e.preventDefault()}
-      className="m-auto max-h-[calc(100dvh-2rem)] w-[min(44rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-border bg-surface p-0 text-text backdrop:bg-black/50"
+      className={`m-auto max-h-[calc(100dvh-2rem)] ${wide ? "w-[min(64rem,calc(100vw-2rem))]" : "w-[min(44rem,calc(100vw-2rem))]"} overflow-hidden rounded-2xl border border-border bg-surface p-0 text-text backdrop:bg-black/50`}
     >
-      <form onSubmit={onSubmit} className="flex max-h-[calc(100dvh-2rem)] flex-col">
+      <form noValidate onSubmit={onSubmit} className="flex max-h-[calc(100dvh-2rem)] flex-col">
         <div className="flex items-center gap-3 border-b border-border px-5 py-4">
           <div className="grid size-9 place-items-center rounded-lg bg-primary-soft text-lg text-primary">{icon}</div>
           <div className="flex-1">
@@ -598,10 +613,16 @@ function Modal({
           <button type="button" className="text-xl text-muted hover:text-text" aria-label="ปิด" onClick={close} disabled={pending}>×</button>
         </div>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
-          {children}
-          {error && <p className="rounded-lg bg-bad-soft px-3 py-2 text-sm text-bad">{error}</p>}
+          <fieldset disabled={pending} className="min-w-0 space-y-4">{children}</fieldset>
         </div>
-        <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
+        <div className="flex flex-wrap justify-end gap-2 border-t border-border px-5 py-3">
+          {(error || Object.keys(fieldErrors).length > 0) && (
+            <div role="alert" tabIndex={-1} data-form-alert className="w-full rounded-lg border border-bad bg-bad-soft px-3 py-2 text-sm text-bad">
+              {error && <p>{error}</p>}
+              {Object.keys(fieldErrors).length > 0 && <p>กรุณาตรวจสอบช่องกรอบแดง {Object.keys(fieldErrors).length} ช่อง ก่อนดำเนินการต่อ</p>}
+            </div>
+          )}
+          {footerActions}
           <button type="button" className="btn" onClick={close} disabled={pending}>ยกเลิก</button>
           <button className="btn btn-primary" disabled={pending}>{pending ? "กำลังบันทึก..." : submitLabel}</button>
         </div>
@@ -613,28 +634,35 @@ function Modal({
 /** บันทึกใน modal — สำเร็จแล้วปิด modal */
 function useModalSave(dialogRef: RefObject<HTMLDialogElement | null>) {
   const [error, setError] = useState<string>();
-  const [pending, startTransition] = useTransition();
+  const [serverErrors, setServerErrors] = useState<MaterialFieldErrors>({});
+  const [pending, startTransition] = useSubmitOnce();
   const run = (save: () => Promise<void>) => {
     setError(undefined);
+    setServerErrors({});
     startTransition(async () => {
       try {
         await save();
         dialogRef.current?.close();
       } catch (e) {
-        setError(e instanceof DataError ? e.message : "บันทึกไม่สำเร็จ: " + firebaseErrorMessage(e));
+        if (e instanceof MaterialFieldValidationError) setServerErrors(e.fields);
+        setError("บันทึกไม่สำเร็จ: " + (e instanceof DataError || e instanceof MaterialFieldValidationError ? e.message : firebaseErrorMessage(e)));
+        focusMaterialError(dialogRef.current);
       }
     });
   };
-  return { error, setError, pending, run };
+  return { error, setError, serverErrors, setServerErrors, pending, run };
 }
 
 /** เลือกไฟล์แนบหลายไฟล์ — ไฟล์ใหญ่เกินกำหนดถูกตัดออกพร้อมแจ้ง */
 function FilePicker({ files, onChange, onError, disabled, hint }: { files: File[]; onChange: (files: File[]) => void; onError: (msg?: string) => void; disabled: boolean; hint: string }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [fileError, setFileError] = useState<string>();
   function pick(list: FileList | null) {
     const picked = Array.from(list ?? []);
     const tooBig = picked.filter((f) => f.size > MAX_FILE_SIZE);
-    onError(tooBig.length ? `ไฟล์ใหญ่เกิน ${formatFileSize(MAX_FILE_SIZE)}: ${tooBig.map((f) => f.name).join(", ")}` : undefined);
+    const message = tooBig.length ? `ไฟล์ใหญ่เกิน ${formatFileSize(MAX_FILE_SIZE)}: ${tooBig.map((f) => f.name).join(", ")}` : undefined;
+    setFileError(message);
+    onError(message);
     onChange([...files, ...picked.filter((f) => f.size <= MAX_FILE_SIZE)]);
     if (inputRef.current) inputRef.current.value = "";
   }
@@ -654,50 +682,82 @@ function FilePicker({ files, onChange, onError, disabled, hint }: { files: File[
         </ul>
       )}
       <input ref={inputRef} type="file" multiple hidden onChange={(e) => pick(e.target.files)} />
-      <button type="button" className="btn w-full border-dashed" disabled={disabled} onClick={() => inputRef.current?.click()}>
+      <button {...materialFieldProps("files", fileError ? { files: fileError } : {})} type="button" className="btn w-full border-dashed" disabled={disabled} onClick={() => inputRef.current?.click()}>
         📎 เลือกไฟล์ ({hint} — ไม่เกิน {formatFileSize(MAX_FILE_SIZE)} ต่อไฟล์)
       </button>
+      <MaterialFieldError name="files" errors={fileError ? { files: fileError } : {}} />
     </section>
   );
 }
 
 const blankRequest = { description: "", spec: "", unit: "", quantity: "", require_schedule: "", remark: "" };
 
-function RequestDialog({ project, actor, onClose, onSaved }: { project: ProjectRecord; actor: string; onClose: () => void; onSaved: (no: string) => void }) {
+function RequestDialog({ project, actor, preparer, onClose, onSaved }: { project: ProjectRecord; actor: string; preparer: string; onClose: () => void; onSaved: (no: string) => void }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [v, setV] = useState(blankRequest);
   const [files, setFiles] = useState<File[]>([]);
-  const { error, setError, pending, run } = useModalSave(dialogRef);
-  const set = (k: keyof typeof blankRequest) => (e: { target: { value: string } }) => setV({ ...v, [k]: e.target.value });
+  const [submission, setSubmission] = useState(() => {
+    const initial = blankMaterialSubmission(project, todayInBangkok(), preparer);
+    initial.history = [{ revision: initial.revision, date: initial.submission_date, details: "Submitted for consideration and approval" }];
+    return initial;
+  });
+  const [preview, setPreview] = useState(false);
+  const [validationMode, setValidationMode] = useState<"save" | "preview" | null>(null);
+  const { error, setError, serverErrors, setServerErrors, pending, run } = useModalSave(dialogRef);
+  const fieldErrors = { ...serverErrors, ...(validationMode ? materialRequestFieldErrors({ ...v, submission }, validationMode === "preview") : {}) };
+  const set = (k: keyof typeof blankRequest) => (e: { target: { value: string } }) => {
+    setV({ ...v, [k]: e.target.value });
+    setServerErrors({});
+    setError(undefined);
+  };
+
+  function validate(mode: "save" | "preview") {
+    setValidationMode(mode);
+    setServerErrors({});
+    setError(undefined);
+    const problems = materialRequestFieldErrors({ ...v, submission }, mode === "preview");
+    if (Object.keys(problems).length) {
+      focusMaterialError(dialogRef.current);
+      return false;
+    }
+    return true;
+  }
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
+    if (!validate("save")) return;
     const quantity = Number(v.quantity);
-    if (!v.description.trim()) return setError("กรุณาใส่ Description");
-    if (!v.unit.trim()) return setError("กรุณาใส่ Unit");
-    if (!(quantity > 0)) return setError("Quantity ต้องมากกว่า 0");
-    if (!v.require_schedule) return setError("กรุณาใส่ Require Schedule");
-    const input = { description: v.description.trim(), spec: v.spec.trim(), unit: v.unit.trim(), quantity, require_schedule: v.require_schedule, remark: v.remark.trim() };
+    const document = cleanMaterialSubmission(submission);
+    const input = { description: v.description.trim(), spec: v.spec.trim(), unit: v.unit.trim(), quantity, require_schedule: v.require_schedule, remark: v.remark.trim(), submission: document };
     run(async () => onSaved(await createMaterialRequest(project.id, input, files, actor)));
   }
 
   return (
+    <>
     <Modal
       dialogRef={dialogRef}
       title="เพิ่ม Material Request"
       subtitle={`${project.code} · Request No. สร้างอัตโนมัติเมื่อบันทึก`}
       icon="+"
       error={error}
+      fieldErrors={fieldErrors}
       pending={pending}
       submitLabel="บันทึก Request"
       onSubmit={onSubmit}
       onClose={onClose}
+      wide
+      footerActions={<button type="button" className="btn" disabled={pending} onClick={() => {
+        if (!validate("preview")) return;
+        setPreview(true);
+      }}>ดูตัวอย่าง / PDF</button>}
     >
+      <p className="text-sm text-muted">กรอกข้อมูลวัสดุสำหรับติดตามรับของ และรายละเอียดเอกสาร 3 หน้าสำหรับยื่นขออนุมัติ</p>
       <section className="space-y-3">
         <h3 className="text-sm font-semibold text-bad">ข้อมูลวัสดุ</h3>
         <div>
-          <label className="label" htmlFor="mr-desc">Description *</label>
-          <input id="mr-desc" className="input" placeholder="เช่น เหล็กเส้น DB12" maxLength={200} value={v.description} onChange={set("description")} autoFocus />
+          <label className="label" htmlFor="mr-desc">Description / ชื่อวัสดุบนหน้าปก *</label>
+          <input id="mr-desc" {...materialFieldProps("description", fieldErrors)} className="input" placeholder="เช่น เหล็กเส้น DB12" maxLength={200} value={v.description} onChange={set("description")} autoFocus />
+            <MaterialFieldError name="description" errors={fieldErrors} />
         </div>
         <div>
           <label className="label" htmlFor="mr-spec">Spec</label>
@@ -709,15 +769,18 @@ function RequestDialog({ project, actor, onClose, onSaved }: { project: ProjectR
         <div className="grid gap-3 sm:grid-cols-3">
           <div>
             <label className="label" htmlFor="mr-unit">Unit *</label>
-            <input id="mr-unit" className="input" placeholder="เส้น / ถุง / คิว" maxLength={30} value={v.unit} onChange={set("unit")} />
+            <input id="mr-unit" {...materialFieldProps("unit", fieldErrors)} className="input" placeholder="เส้น / ถุง / คิว" maxLength={30} value={v.unit} onChange={set("unit")} />
+            <MaterialFieldError name="unit" errors={fieldErrors} />
           </div>
           <div>
             <label className="label" htmlFor="mr-qty">Quantity *</label>
-            <input id="mr-qty" className="input text-right" type="number" min="0" step="any" value={v.quantity} onChange={set("quantity")} />
+            <input id="mr-qty" {...materialFieldProps("quantity", fieldErrors)} className="input text-right" type="number" min="0" step="any" value={v.quantity} onChange={set("quantity")} />
+            <MaterialFieldError name="quantity" errors={fieldErrors} />
           </div>
           <div>
             <label className="label" htmlFor="mr-sch">Require Schedule *</label>
-            <input id="mr-sch" className="input" type="date" value={v.require_schedule} onChange={set("require_schedule")} />
+            <input id="mr-sch" {...materialFieldProps("require_schedule", fieldErrors)} className="input" type="date" value={v.require_schedule} onChange={set("require_schedule")} />
+            <MaterialFieldError name="require_schedule" errors={fieldErrors} />
           </div>
         </div>
         <div>
@@ -725,8 +788,11 @@ function RequestDialog({ project, actor, onClose, onSaved }: { project: ProjectR
           <textarea id="mr-remark" className="input" rows={3} placeholder="เช่น ใช้งานฐานราก F1-F6" maxLength={1000} value={v.remark} onChange={set("remark")} />
         </div>
       </section>
+      <MaterialSubmissionFields value={submission} errors={fieldErrors} onChange={(next) => { setSubmission(next); setServerErrors({}); setError(undefined); }} disabled={pending} />
       <FilePicker files={files} onChange={setFiles} onError={setError} disabled={pending} hint="แบบ, ใบเสนอราคา, รูป ฯลฯ" />
     </Modal>
+    {preview && <MaterialSubmissionPreview project={project} request={{ ...v, quantity: Number(v.quantity) || 0, no: "DRAFT", created_at: "", submission: cleanMaterialSubmission(submission) }} draft onClose={() => setPreview(false)} />}
+    </>
   );
 }
 
@@ -751,15 +817,25 @@ function ReceiveDialog({
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [v, setV] = useState({ quantity: "", receive_date: todayInBangkok(), do_no: "", approval: (canApprove ? "approved" : "pending") as MaterialApproval, remark: "" });
   const [files, setFiles] = useState<File[]>([]);
-  const { error, setError, pending, run } = useModalSave(dialogRef);
-  const set = (k: keyof typeof v) => (e: { target: { value: string } }) => setV({ ...v, [k]: e.target.value });
+  const [validated, setValidated] = useState(false);
+  const { error, setError, serverErrors, setServerErrors, pending, run } = useModalSave(dialogRef);
+  const fieldErrors = { ...serverErrors, ...(validated ? materialReceiptFieldErrors(v, b.remaining) : {}) };
+  const set = (k: keyof typeof v) => (e: { target: { value: string } }) => {
+    setV({ ...v, [k]: e.target.value });
+    setServerErrors({});
+    setError(undefined);
+  };
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
+    setValidated(true);
+    setServerErrors({});
+    setError(undefined);
+    if (Object.keys(materialReceiptFieldErrors(v, b.remaining)).length) {
+      focusMaterialError(dialogRef.current);
+      return;
+    }
     const quantity = Number(v.quantity);
-    if (!(quantity > 0)) return setError("จำนวนรับต้องมากกว่า 0");
-    if (v.approval !== "rejected" && quantity > b.remaining) return setError(`รับเกินยอดคงเหลือ — เหลือรับได้อีก ${fmt(b.remaining)} ${r.unit}`);
-    if (!v.receive_date) return setError("กรุณาใส่ Actual Receive Date");
     const input = { quantity, receive_date: v.receive_date, do_no: v.do_no.trim(), approval: v.approval, remark: v.remark.trim() };
     run(async () => {
       await receiveMaterial(project.id, r.id, input, files, actor);
@@ -774,6 +850,7 @@ function ReceiveDialog({
       subtitle={`${r.description}${r.spec ? ` · ${r.spec}` : ""}`}
       icon="📦"
       error={error}
+      fieldErrors={fieldErrors}
       pending={pending}
       submitLabel="บันทึกรับของ"
       onSubmit={onSubmit}
@@ -789,11 +866,13 @@ function ReceiveDialog({
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <label className="label" htmlFor="rc-qty">จำนวนรับ ({r.unit}) *</label>
-            <input id="rc-qty" className="input text-right" type="number" min="0" step="any" value={v.quantity} onChange={set("quantity")} autoFocus />
+            <input id="rc-qty" {...materialFieldProps("quantity", fieldErrors)} className="input text-right" type="number" min="0" step="any" value={v.quantity} onChange={set("quantity")} autoFocus />
+            <MaterialFieldError name="quantity" errors={fieldErrors} />
           </div>
           <div>
             <label className="label" htmlFor="rc-date">Actual Receive Date *</label>
-            <input id="rc-date" className="input" type="date" value={v.receive_date} onChange={set("receive_date")} />
+            <input id="rc-date" {...materialFieldProps("receive_date", fieldErrors)} className="input" type="date" value={v.receive_date} onChange={set("receive_date")} />
+            <MaterialFieldError name="receive_date" errors={fieldErrors} />
           </div>
           <div>
             <label className="label" htmlFor="rc-do">เลขที่ DO / ใบส่งของ</label>

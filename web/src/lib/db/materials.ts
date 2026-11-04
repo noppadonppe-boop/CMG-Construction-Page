@@ -7,6 +7,7 @@ import { DataError, deleteFiles, newId, toIso, uploadFile, type StoredFile } fro
 import type { ProjectRecord } from "./projects";
 import { useProjectSection } from "./sections";
 import { projectRef, sectionCol, storagePath } from "./paths";
+import { cleanMaterialSubmission, normalizeMaterialSubmission, materialRequestFieldErrors, materialReceiptFieldErrors, MaterialFieldValidationError, type MaterialSubmission } from "../material-submission";
 
 // Material Request ของโครงการ: projects/{id}/material_requests/{auto}
 // 1 Request = 1 เอกสาร — ข้อมูลขอเบิก + การรับของทุกครั้ง (array receipts) อยู่ในเอกสารเดียวกัน
@@ -55,9 +56,11 @@ export interface MaterialRequest {
   receipts: MaterialReceipt[];
   created_at: string;
   created_by: string;
+  /** Cover, submission history and contents; absent on legacy requests. */
+  submission?: MaterialSubmission | null;
 }
 
-export type NewMaterialRequest = Pick<MaterialRequest, "description" | "spec" | "unit" | "quantity" | "require_schedule" | "remark">;
+export type NewMaterialRequest = Pick<MaterialRequest, "description" | "spec" | "unit" | "quantity" | "require_schedule" | "remark" | "submission">;
 export type NewMaterialReceipt = Pick<MaterialReceipt, "quantity" | "receive_date" | "do_no" | "approval" | "remark">;
 
 const toFiles = (v: unknown) => (Array.isArray(v) ? (v as MaterialFile[]).filter((f) => f?.path && f.url) : []);
@@ -93,6 +96,7 @@ function toRequest(snap: DocumentSnapshot): MaterialRequest {
       .toSorted((a: MaterialReceipt, b: MaterialReceipt) => a.received_at.localeCompare(b.received_at)),
     created_at: toIso(d.created_at),
     created_by: d.created_by ?? "",
+    submission: normalizeMaterialSubmission(d.submission),
   };
 }
 
@@ -155,6 +159,10 @@ async function uploadAll(projectId: string, docId: string, files: File[]): Promi
  * ถ้าบันทึกไม่สำเร็จ ลบไฟล์ที่อัปไปแล้วทิ้ง
  */
 export async function createMaterialRequest(projectId: string, input: NewMaterialRequest, files: File[], actor: string): Promise<string> {
+  const submission = input.submission ? cleanMaterialSubmission(input.submission) : null;
+  const errors = materialRequestFieldErrors({ ...input, submission });
+  if (Object.keys(errors).length) throw new MaterialFieldValidationError(errors);
+  if (files.some((f) => f.size > 20 * 1024 * 1024)) throw new DataError("ไฟล์แนบต้องไม่เกิน 20 MB ต่อไฟล์");
   const ref = doc(sectionCol(projectId, "material_requests"));
   const uploaded = await uploadAll(projectId, ref.id, files);
   let no = "";
@@ -165,7 +173,7 @@ export async function createMaterialRequest(projectId: string, input: NewMateria
       const n = Number(project.get("material_request_counter") ?? 0) + 1;
       no = requestNo(project.get("code") ?? "", n);
       tx.update(projectRef(projectId), { material_request_counter: n });
-      tx.set(ref, { ...input, no, files: uploaded, receipts: [], created_at: serverTimestamp(), created_by: actor });
+      tx.set(ref, { ...input, submission, no, files: uploaded, receipts: [], created_at: serverTimestamp(), created_by: actor });
     });
   } catch (e) {
     await deleteFiles(uploaded.map((u) => u.path));
@@ -176,6 +184,8 @@ export async function createMaterialRequest(projectId: string, input: NewMateria
 
 /** บันทึกรับของ — ตรวจยอดคงเหลือกับข้อมูลล่าสุดใน transaction จึงรับเกินไม่ได้แม้มีคนรับพร้อมกัน */
 export async function receiveMaterial(projectId: string, requestId: string, input: NewMaterialReceipt, files: File[], actor: string) {
+  const errors = materialReceiptFieldErrors(input, Infinity);
+  if (Object.keys(errors).length) throw new MaterialFieldValidationError(errors);
   const ref = requestRef(projectId, requestId);
   const uploaded = await uploadAll(projectId, requestId, files);
   try {
@@ -184,8 +194,8 @@ export async function receiveMaterial(projectId: string, requestId: string, inpu
       if (!snap.exists()) throw new DataError("ไม่พบ Request นี้ อาจถูกลบไปแล้ว");
       const request = toRequest(snap);
       const { remaining } = materialBalance(request, "");
-      if (input.approval !== "rejected" && input.quantity > remaining)
-        throw new DataError(`รับเกินยอดคงเหลือ — เหลือรับได้อีก ${remaining.toLocaleString("th-TH")} ${request.unit}`);
+      const latestErrors = materialReceiptFieldErrors(input, remaining);
+      if (Object.keys(latestErrors).length) throw new MaterialFieldValidationError(latestErrors);
       const receipt: MaterialReceipt = { ...input, id: newId(), files: uploaded, received_by: actor, received_at: new Date().toISOString() };
       tx.update(ref, { receipts: [...request.receipts, receipt], updated_at: serverTimestamp(), updated_by: actor });
     });

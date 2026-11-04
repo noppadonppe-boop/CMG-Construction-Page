@@ -105,6 +105,16 @@ body {
   }
 }
 
+/* Keep validation borders visible while focused, in both light and dark themes. */
+[data-material-field][aria-invalid="true"] {
+  border-color: var(--bad);
+  box-shadow: 0 0 0 1px var(--bad);
+}
+[data-material-field][aria-invalid="true"]:focus {
+  outline: 2px solid var(--bad);
+  outline-offset: 2px;
+}
+
 /* พิมพ์ / บันทึกเป็น PDF จากหน้ารายงาน */
 @page {
   size: A4;
