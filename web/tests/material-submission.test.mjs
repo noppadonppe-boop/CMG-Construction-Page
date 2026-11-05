@@ -4,7 +4,7 @@ import { blankMaterialSubmission, cleanMaterialSubmission, normalizeMaterialSubm
 import { buildMaterialSubmissionDocument, materialSubmissionFilename } from "../src/lib/material-submission-document.ts";
 
 const project = { name: "โครงการทดสอบ", location: "ระยอง", client: "เจ้าของโครงการ" };
-const request = { no: "MR-078-001", description: "ข้อต่อเหล็ก / Rebar coupler", spec: "SD40", unit: "ชิ้น", quantity: 120, require_schedule: "2026-11-10", remark: "", created_at: "2026-11-04T01:00:00Z" };
+const request = { no: "MR-078-001", description: "ข้อต่อเหล็ก", spec: "SD40", unit: "ชิ้น", quantity: 120, require_schedule: "2026-11-10", remark: "", created_at: "2026-11-04T01:00:00Z" };
 
 test("submit reports all missing fields and the exact history/content row together", () => {
   const submission = blankMaterialSubmission({ ...project, name: " " }, "");
@@ -101,4 +101,11 @@ test("long project details receive a numbered continuation instead of an unnumbe
   assert.equal((html.match(/class="page"/g) || []).length, 4);
   assert.ok(html.includes("PROJECT DETAILS (continued)"));
   assert.ok(html.includes("4 of 4"));
+});
+
+test("request text limits accept boundaries and reject oversized fields", () => {
+  const value = { ...request, description: "ก".repeat(20), spec: "s".repeat(20), area: "ก".repeat(50), remark: "r".repeat(50) };
+  assert.deepEqual(materialRequestFieldErrors(value), {});
+  const errors = materialRequestFieldErrors({ ...value, description: value.description + "ก", spec: value.spec + "s", area: value.area + "ก", remark: value.remark + "r" });
+  assert.deepEqual(Object.keys(errors).sort(), ["area", "description", "remark", "spec"]);
 });

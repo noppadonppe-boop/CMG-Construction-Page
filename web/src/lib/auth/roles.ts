@@ -1,13 +1,14 @@
 // บทบาทและสิทธิ์ — ผู้ใช้ 1 คนมีได้หลาย role และได้สิทธิ์รวมของทุก role ที่มี
 
-export const ROLES = ["MasterAdmin", "Admin", "Executive", "ProjectManager", "Engineer", "QS", "Staff"] as const;
+export const ROLES = ["MasterAdmin", "Admin", "Executive", "ProjectManager", "CM", "Engineer", "QS", "Staff"] as const;
 export type UserRole = (typeof ROLES)[number];
 
 export const ROLE_LABEL: Record<UserRole, string> = {
   MasterAdmin: "Master Admin",
   Admin: "ผู้ดูแลระบบ",
   Executive: "ผู้บริหาร",
-  ProjectManager: "ผู้จัดการโครงการ",
+  ProjectManager: "PM / ผู้จัดการโครงการ",
+  CM: "CM / ผู้จัดการก่อสร้าง",
   Engineer: "วิศวกร / หน้างาน",
   QS: "QS / ประมาณราคา",
   Staff: "พนักงานทั่วไป",
@@ -67,6 +68,7 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[] | "all"> = {
     "document.upload", "document.approve", "report.view", "report.export",
     "material.request", "material.receive", "material.approve",
   ],
+  CM: [...VIEW, "material.request", "material.receive", "material.approve", "report.view"],
   Engineer: [...VIEW, "daily.create", "issue.create", "issue.update", "document.upload", "report.view", "material.request", "material.receive"],
   QS: [...VIEW, "document.upload", "report.view", "report.export"],
   Staff: [...VIEW],

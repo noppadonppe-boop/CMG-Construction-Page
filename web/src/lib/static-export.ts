@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams, usePathname } from "next/navigation";
+import { useParams, usePathname, useSearchParams } from "next/navigation";
 import { useSyncExternalStore } from "react";
 import { STATIC_PLACEHOLDER } from "./static-placeholder";
 
@@ -13,7 +13,13 @@ const isPlaceholderPath = (pathname: string) => pathname.split("/").includes(STA
  */
 export function useActualPathname(): string {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const location = useSyncExternalStore(noop, () => window.location.pathname, () => null);
+  // Resolve the destination before the layout restores the visible URL.
+  if (process.env.NEXT_PUBLIC_STATIC_EXPORT === "1" && isPlaceholderPath(pathname)) {
+    const target = searchParams.get("__to");
+    if (target?.startsWith("/") && !target.startsWith("//")) return target;
+  }
   return location && isPlaceholderPath(pathname) ? location : pathname;
 }
 

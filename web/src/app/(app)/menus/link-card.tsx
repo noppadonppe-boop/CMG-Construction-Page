@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
-import Link from "next/link";
+import { StaticLink as Link } from "@/components/static-link";
 import { inAppPath, safeUrl, type MenuCard } from "@/lib/db/menus";
 import { MenuIcon } from "@/components/icon-pickers";
 

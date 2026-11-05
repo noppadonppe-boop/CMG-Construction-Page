@@ -2,16 +2,18 @@
 
 import { Fragment, useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode, type RefObject } from "react";
 import { useAuth } from "@/lib/auth/context";
+import { materialRequestRows } from "@/lib/material-request-items";
 import { downloadCsv } from "@/lib/csv";
 import { DataError } from "@/lib/db/common";
 import {
   countsToward,
-  createMaterialRequest,
+  createMaterialRequestWithItems,
   deleteMaterialRequest,
   deleteReceipt,
   materialApproval,
   materialBalance,
   receiveMaterial,
+  reviewMaterialRequest,
   updateReceiptApproval,
   useMaterialRequests,
   type MaterialApproval,
@@ -25,7 +27,10 @@ import { firebaseErrorMessage } from "@/lib/firebase/errors";
 import { formatDate, formatDateTime, formatFileSize, todayInBangkok } from "@/lib/format";
 import { Pill } from "@/components/ui";
 import { MaterialSubmissionFields } from "@/components/material-submission-fields";
+import { MaterialDocSetupBody } from "@/components/material-doc-setup-body";
 import { MaterialSubmissionPreview } from "@/components/material-submission-preview";
+import { loadMaterialDocSetup } from "@/lib/db/material-doc-setup";
+import type { MaterialDocSetup } from "@/lib/material-doc-setup";
 import { blankMaterialSubmission, cleanMaterialSubmission, materialRequestFieldErrors, materialReceiptFieldErrors, MaterialFieldValidationError, type MaterialFieldErrors } from "@/lib/material-submission";
 import { MaterialFieldError, materialFieldProps, focusMaterialError } from "@/components/material-field-error";
 import { useSubmitOnce } from "@/lib/use-submit-once";
@@ -61,9 +66,12 @@ function useAction() {
 /** ตารางขอเบิก/รับของ/ยอดคงเหลือของวัสดุในโครงการ */
 export function MaterialRequestBoard({ project }: { project: ProjectRecord }) {
   const { userProfile, can } = useAuth();
-  const { requests, loading, error } = useMaterialRequests(project);
+  const { requests: documents, loading, error } = useMaterialRequests(project);
+  const requests = documents.flatMap(materialRequestRows);
   const [query, setQuery] = useState("");
+  const [setupDocOpen, setSetupDocOpen] = useState(false);
   const [requestDialogOpen, setRequestDialogOpen] = useState(false);
+  const [editingRequest, setEditingRequest] = useState<MaterialRequest | undefined>();
   const [pdfRequest, setPdfRequest] = useState<MaterialRequest | null>(null);
   const [receivingId, setReceivingId] = useState<string | null>(null);
   const [historyId, setHistoryId] = useState<string | null>(null);
@@ -76,6 +84,8 @@ export function MaterialRequestBoard({ project }: { project: ProjectRecord }) {
   const balances = new Map(requests.map((r) => [r.id, materialBalance(r, today)]));
   const q = query.trim().toLowerCase();
   const shown = requests.filter((r) => !q || `${r.no} ${r.description} ${r.spec} ${r.submission?.document_no || ""} ${r.submission?.manufacturer || ""}`.toLowerCase().includes(q));
+  const matchingRequestIds = new Set(shown.map((row) => row.request_id || row.id));
+  const requestRows = requests.filter((row) => matchingRequestIds.has(row.request_id || row.id));
   // ตารางรับของ: รายการที่ยังรับไม่ครบขึ้นก่อน
   const toReceive = shown.toSorted((a, b) => Number(balances.get(a.id)!.remaining === 0) - Number(balances.get(b.id)!.remaining === 0));
   const outstanding = requests.filter((r) => balances.get(r.id)!.remaining > 0).length;
@@ -90,7 +100,8 @@ export function MaterialRequestBoard({ project }: { project: ProjectRecord }) {
   }
 
   function removeRequest(r: MaterialRequest) {
-    if (!confirm(`ลบ ${r.no} (${r.description}) พร้อมการรับของ ${r.receipts.length} ครั้งและไฟล์แนบทั้งหมด?`)) return;
+    const document = documents.find((request) => request.id === (r.request_id || r.id))!;
+    if (!confirm(`ลบ ${r.no} ทั้งเอกสาร (${document.items?.length || 1} รายการวัสดุ) พร้อมการรับของ ${document.receipts.length} ครั้งและไฟล์แนบทั้งหมด?`)) return;
     action.run(async () => {
       await deleteMaterialRequest(project.id, r);
       setNotice(`ลบ ${r.no} แล้ว`);
@@ -106,18 +117,49 @@ export function MaterialRequestBoard({ project }: { project: ProjectRecord }) {
   }
 
   const changeApproval = (r: MaterialRequest, x: MaterialReceipt, approval: MaterialApproval) =>
-    action.run(() => updateReceiptApproval(project.id, r.id, x.id, approval, actor));
+    action.run(() => updateReceiptApproval(project.id, r.request_id || r.id, x.id, approval, actor));
 
   function exportCsv() {
     downloadCsv(
       `material-status-${project.code}-${today}.csv`,
-      ["Request No.", "Description", "Spec", "Unit", "Quantity", "Require Schedule", "รับสะสม", "คงเหลือ", "รับล่าสุด", "สถานะ", "Remark"],
+      ["Request No.", "Description", "Spec", "พื้นที่", "Unit", "Quantity", "Require Schedule", "รับสะสม", "คงเหลือ", "รับล่าสุด", "สถานะ", "Remark"],
       requests.map((r) => {
         const b = balances.get(r.id)!;
-        return [r.no, r.description, r.spec, r.unit, r.quantity, r.require_schedule, b.received, b.remaining, b.last_receive_date, b.status.label, r.remark];
+        return [r.no, r.description, r.spec, r.area || "", r.unit, r.quantity, r.require_schedule, b.received, b.remaining, b.last_receive_date, b.status.label, r.remark];
       }),
     );
   }
+
+  function workflowControls(row: MaterialRequest) {
+    const request = documents.find((document) => document.id === (row.request_id || row.id)) || row;
+    const status = request.workflow_status;
+    if (!status) return <span className="text-xs text-muted">รายการเดิม</span>;
+    const labels = { draft: "Draft", pending_cm: "รอ CM", pending_pm: "รอ PM", approved: "Approved" };
+    const role = status === "pending_cm" ? "CM" : "ProjectManager";
+    const canReview = (status === "pending_cm" || status === "pending_pm") && (userProfile?.role.includes(role) || userProfile?.role.includes("MasterAdmin"));
+    const review = (decision: "approve" | "reject" | "retry_email") => {
+      const reason = decision === "reject" ? prompt("เหตุผล Reject (ไม่เกิน 500 ตัวอักษร)") : "";
+      if (reason === null) return;
+      if (decision === "reject" && (!reason.trim() || reason.length > 500)) { setNotice("กรุณาระบุเหตุผล Reject 1–500 ตัวอักษร"); return; }
+      action.run(async () => {
+        const result = await reviewMaterialRequest(project.id, request, decision, reason);
+        setNotice(result.emailError ? "PM อนุมัติแล้ว แต่ส่งอีเมลไม่สำเร็จ: " + result.emailError : decision === "reject" ? "ส่งกลับ Draft แล้ว" : decision === "retry_email" ? "ดำเนินการส่งอีเมลแล้ว ตรวจสอบสถานะในตาราง" : "บันทึกการอนุมัติแล้ว");
+      });
+    };
+    return <div className="flex items-center gap-2 whitespace-nowrap text-xs">
+      <div className="flex shrink-0 items-center gap-2">
+        <Pill tone={status === "approved" ? "ok" : status === "draft" ? "bad" : "warn"}>{labels[status]}</Pill>
+        {canReview && <><button type="button" className="text-ok hover:underline" disabled={action.pending} onClick={() => review("approve")}>Approve</button><button type="button" className="text-bad hover:underline" disabled={action.pending} onClick={() => review("reject")}>Reject</button></>}
+        {status === "draft" && (request.created_by === actor || userProfile?.role.includes("MasterAdmin")) && can("material.request") && <button type="button" className="text-primary hover:underline" onClick={() => { setEditingRequest(request); setRequestDialogOpen(true); }}>แก้ไข Request</button>}
+        {status === "approved" && <span className={request.email_status === "failed" ? "text-bad" : "text-muted"}>{request.email_status === "sent" ? "ส่งอีเมลแล้ว" : request.email_status === "failed" ? "อีเมลไม่สำเร็จ" : "กำลังส่งอีเมล"}</span>}
+        {status === "approved" && ["failed", "pending"].includes(request.email_status || "") && (userProfile?.role.includes("ProjectManager") || userProfile?.role.includes("MasterAdmin")) && <button type="button" className="text-primary hover:underline" disabled={action.pending} title={request.email_error} onClick={() => review("retry_email")}>ส่งอีเมลอีกครั้ง</button>}
+      </div>
+      {request.rejection_reason && <span className="max-w-40 truncate text-bad" title={request.rejection_reason}>เหตุผล: {request.rejection_reason}</span>}
+      {!!request.approval_history?.length && <details className="text-muted"><summary className="cursor-pointer">ประวัติอนุมัติ</summary>{request.approval_history.map((entry, index) => <p key={index} className="max-w-72 whitespace-normal">{entry.stage} · {entry.name} · {entry.action} · {formatDateTime(entry.at)}{entry.reason && " · " + entry.reason}</p>)}</details>}
+    </div>;
+  }
+
+  if (setupDocOpen) return <MaterialDocSetupBody key={project.id} project={project} onClose={() => setSetupDocOpen(false)} onSaved={() => setNotice("บันทึก Setup Doc แล้ว")} />;
 
   const removeProps: RemoveProps = canRemove ? { onRemove: removeRequest, removing: action.pending } : {};
 
@@ -143,10 +185,10 @@ export function MaterialRequestBoard({ project }: { project: ProjectRecord }) {
 
       <Section
         title="1. Request"
-        count={`${requests.length} รายการ`}
-        actions={can("material.request") && <button type="button" className="btn btn-primary" onClick={() => setRequestDialogOpen(true)}>+ เพิ่ม Request</button>}
+        count={`${documents.length} Request · ${requests.length} รายการวัสดุ`}
+        actions={can("material.request") && <><button type="button" className="btn" onClick={() => setSetupDocOpen(true)}>Setup Doc</button><button type="button" className="btn btn-primary" onClick={() => { setEditingRequest(undefined); setRequestDialogOpen(true); }}>+ เพิ่ม Request</button></>}
       >
-        {loading ? <Loading /> : <RequestTable requests={shown} balances={balances} onPick={pick} onPdf={setPdfRequest} {...removeProps} />}
+        {loading ? <Loading /> : <RequestTable workflow={workflowControls} requests={requestRows} balances={balances} onPick={pick} onPdf={(row) => setPdfRequest(documents.find((request) => request.id === (row.request_id || row.id)) || row)} {...removeProps} />}
       </Section>
 
       <Section title="2. รับของ" count={`${outstanding} รายการรอรับ · กดแถวเพื่อดูประวัติการรับ`}>
@@ -191,7 +233,7 @@ export function MaterialRequestBoard({ project }: { project: ProjectRecord }) {
       </Section>
 
       {requestDialogOpen && (
-        <RequestDialog project={project} actor={actor} preparer={[userProfile?.firstName, userProfile?.lastName].filter(Boolean).join(" ")} onClose={() => setRequestDialogOpen(false)} onSaved={(no) => setNotice(`เพิ่ม ${no} แล้ว — เปิดเอกสารได้ที่ปุ่ม PDF ในตาราง Request`)} />
+        <RequestDialog draft={editingRequest} project={project} actor={actor} preparer={[userProfile?.firstName, userProfile?.lastName].filter(Boolean).join(" ")} onClose={() => setRequestDialogOpen(false)} onSaved={(no, savedAsDraft) => setNotice(savedAsDraft ? `บันทึก ${no} แล้ว · สถานะ Draft` : `ส่ง ${no} ให้ CM ตรวจสอบแล้ว`)} />
       )}
       {pdfRequest && <MaterialSubmissionPreview project={project} request={pdfRequest} onClose={() => setPdfRequest(null)} />}
       {receiving && (
@@ -242,7 +284,7 @@ function Table({ groups, head, children, empty }: { groups: [string, number, str
               <th key={i} colSpan={span} className={`px-3 py-1.5 font-semibold ${tone}`}>{label}</th>
             ))}
           </tr>
-          <tr className="bg-surface-2 text-muted [&>th]:whitespace-nowrap [&>th]:px-3 [&>th]:py-2 [&>th]:font-medium">{head}</tr>
+          <tr className="bg-surface-2 text-muted [&>th]:whitespace-nowrap [&>th]:px-3 [&>th]:py-1.5 [&>th]:font-medium">{head}</tr>
         </thead>
         <tbody>
           {empty ? (
@@ -259,6 +301,8 @@ function Table({ groups, head, children, empty }: { groups: [string, number, str
 }
 
 // สีกลุ่มคอลัมน์ตามไฟล์ Excel: ข้อมูลวัสดุ (ส้ม) · การขอเบิก (เหลือง) · การรับ (ฟ้า)
+/** แถวรายการ: บรรทัดเดียว เตี้ยที่สุด (ไม่ตัดคำ ล้นให้เลื่อนตารางแนวนอนแทน) */
+const ROW = "[&>td]:!py-1 [&>td]:whitespace-nowrap [&>td]:align-middle";
 const G_ITEM = "bg-bad-soft text-bad";
 const G_REQ = "bg-warn-soft text-warn";
 const G_RECV = "bg-primary-soft text-primary";
@@ -275,37 +319,84 @@ function RemoveCell({ request, onRemove, removing }: RemoveProps & { request: Ma
   );
 }
 
-function RequestTable({ requests, balances, onPick, onPdf, onRemove, removing }: { requests: MaterialRequest[]; balances: Map<string, MaterialBalance>; onPick: (r: MaterialRequest) => void; onPdf: (r: MaterialRequest) => void } & RemoveProps) {
+function RequestTable({ requests, balances, onPick, onPdf, onRemove, removing, workflow }: { workflow: (request: MaterialRequest) => ReactNode; requests: MaterialRequest[]; balances: Map<string, MaterialBalance>; onPick: (r: MaterialRequest) => void; onPdf: (r: MaterialRequest) => void } & RemoveProps) {
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const groups = new Map<string, MaterialRequest[]>();
+  for (const row of requests) {
+    const id = row.request_id || row.id;
+    groups.set(id, [...(groups.get(id) || []), row]);
+  }
+  function toggle(id: string) {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
   return (
     <>
       <Table
-        groups={[["ข้อมูลวัสดุ", 3, G_ITEM], ["การขอเบิก", 5, G_REQ], ["", onRemove ? 3 : 2, ""]]}
-        head={<><th>Request No. / Doc. No.</th><th>Description</th><th>Spec</th><th>Unit</th><th className="text-right">Quantity</th><th>Require Schedule</th><th>Remark</th><th>ไฟล์แนบ</th><th>สถานะ</th><th>เอกสาร</th>{onRemove && <th />}</>}
+        groups={[["ข้อมูลวัสดุ", 4, G_ITEM], ["", 5, ""], ["", onRemove ? 3 : 2, ""]]}
+        head={<><th>Request No. / Doc. No.</th><th>Description</th><th>Spec</th><th>พื้นที่</th><th>Unit</th><th className="text-right">Quantity</th><th>Require Schedule</th><th>Remark</th><th>ไฟล์แนบ</th><th>สถานะ</th><th>เอกสาร</th>{onRemove && <th />}</>}
         empty={requests.length === 0}
       >
-        {requests.map((r) => {
-          const b = balances.get(r.id)!;
+        {Array.from(groups, ([id, rows]) => {
+          const r = rows[0];
+          if (rows.length > 1) {
+            const open = expanded.has(id);
+            return <Fragment key={id}>
+              <tr className={`border-t border-border bg-surface-2 ${ROW}`}>
+                <td className="px-3 py-2">
+                  <button type="button" className="inline-flex items-center gap-2 font-medium whitespace-nowrap text-primary" aria-expanded={open} aria-controls={`request-items-${id}`} aria-label={`${open ? "ย่อ" : "ขยาย"}รายการวัสดุ ${r.no}`} onClick={() => toggle(id)}><span aria-hidden="true">{open ? "▾" : "▸"}</span>{r.no}</button>
+                  {r.submission && <span className="ml-2 text-xs text-muted">{r.submission.document_no || r.no} · {r.submission.revision}</span>}
+                </td>
+                <td colSpan={7} className="px-3 py-2">
+                  <button type="button" className="text-left" aria-expanded={open} aria-controls={`request-items-${id}`} onClick={() => toggle(id)}><span className="font-medium">{rows.length} รายการวัสดุ</span><span className="ml-2 text-xs text-muted">{open ? "ย่อรายการ" : "ขยายรายการ"}</span></button>
+                </td>
+                <td className="max-w-48 px-3 py-2"><div className="max-w-48 overflow-x-auto [&>ul]:flex-nowrap [&>ul>li]:shrink-0"><FileLinks files={r.files} inline /></div></td>
+                <td className="px-3 py-2">{workflow(r)}</td>
+                <td className="px-3 py-2"><button type="button" className="btn !min-h-0 !px-2 !py-0.5 text-xs !leading-4" onClick={() => onPdf(r)} aria-label={`ดู PDF ${r.no}`}>PDF</button></td>
+                <RemoveCell request={r} onRemove={onRemove} removing={removing} />
+              </tr>
+              <tr id={`request-items-${id}`} hidden={!open}>
+                <td colSpan={onRemove ? 12 : 11} className="px-2 py-1">
+                  <div className="overflow-x-auto rounded-lg border border-border">
+                    <table className="w-full whitespace-nowrap text-xs leading-4 [&_td>span]:!py-0 [&_td>span]:!leading-4">
+                      <thead className="bg-surface-2 text-left text-xs text-muted"><tr className="[&>th]:px-2 [&>th]:py-1"><th>รายการ</th><th>Description</th><th>Spec</th><th>พื้นที่</th><th>Unit</th><th>Quantity</th><th>Require Schedule</th><th>Remark</th><th>สถานะ</th></tr></thead>
+                      <tbody>{rows.map((row, index) => {
+                        const balance = balances.get(row.id)!;
+                        return <tr key={row.id} className="border-t border-border [&>td]:px-2 [&>td]:py-0.5 [&>td]:align-middle">
+                          <td><button type="button" className="text-primary hover:underline" onClick={() => onPick(row)} aria-label={`ดูยอดคงเหลือรายการที่ ${index + 1} ${row.description}`}>{index + 1}</button></td>
+                          <td>{row.description}</td><td className="text-muted">{row.spec || "–"}</td><td>{row.area || "–"}</td><td>{row.unit}</td><td className="tabular-nums">{fmt(row.quantity)}</td><td className="whitespace-nowrap">{day(row.require_schedule)}</td><td className="text-muted">{row.remark || "–"}</td><td><Pill tone={balance.status.tone}>{balance.status.label}</Pill></td>
+                        </tr>;
+                      })}</tbody>
+                    </table>
+                  </div>
+                </td>
+              </tr>
+            </Fragment>;
+          }
           return (
-            <tr key={r.id} className="border-t border-border">
+            <tr key={r.id} className={`border-t border-border ${ROW}`}>
               <td className="px-3 py-2">
                 <button type="button" className="font-medium whitespace-nowrap text-primary underline-offset-2 hover:underline" onClick={() => onPick(r)}>{r.no}</button>
-                {r.submission && <div className="mt-1 text-xs text-muted">{r.submission.document_no || r.no} · {r.submission.revision}</div>}
+                {r.submission && <span className="ml-2 text-xs text-muted">{r.submission.document_no || r.no} · {r.submission.revision}</span>}
               </td>
               <td className="px-3 py-2">{r.description}</td>
               <td className="px-3 py-2 text-muted">{r.spec || "–"}</td>
-              <td className="px-3 py-2">{r.unit}</td>
+              <td className="px-3 py-2">{r.area || "–"}</td><td className="px-3 py-2">{r.unit}</td>
               <td className="px-3 py-2 text-right tabular-nums">{fmt(r.quantity)}</td>
               <td className="px-3 py-2 whitespace-nowrap">{day(r.require_schedule)}</td>
               <td className="px-3 py-2 text-muted">{r.remark || "–"}</td>
-              <td className="max-w-48 px-3 py-2"><FileLinks files={r.files} /></td>
-              <td className="px-3 py-2"><Pill tone={b.status.tone}>{b.status.label}</Pill></td>
-              <td className="px-3 py-2"><button type="button" className="btn px-3 py-1 text-xs" onClick={() => onPdf(r)} aria-label={`ดู PDF ${r.no}`}>PDF</button></td>
+              <td className="max-w-48 px-3 py-2"><div className="max-w-48 overflow-x-auto [&>ul]:flex-nowrap [&>ul>li]:shrink-0"><FileLinks files={r.files} inline /></div></td>
+              <td className="px-3 py-2">{workflow(r)}</td>
+              <td className="px-3 py-2"><button type="button" className="btn !min-h-0 !px-2 !py-0.5 text-xs !leading-4" onClick={() => onPdf(r)} aria-label={`ดู PDF ${r.no}`}>PDF</button></td>
               <RemoveCell request={r} onRemove={onRemove} removing={removing} />
             </tr>
           );
         })}
       </Table>
-      <p className="text-xs text-muted">กด Request No. เพื่อดูยอดคงเหลือและ timeline ในตารางที่ 3</p>
+      <p className="text-xs text-muted">กด ▸ เพื่อขยาย/ย่อรายการวัสดุ · กดเลขรายการ หรือ Request ที่มีวัสดุรายการเดียว เพื่อดูยอดคงเหลือและ timeline ในตารางที่ 3</p>
     </>
   );
 }
@@ -336,7 +427,7 @@ function ReceiveTable({
         const open = openId === r.id;
         return (
           <Fragment key={r.id}>
-            <tr className="cursor-pointer border-t border-border hover:bg-surface-2" onClick={() => onToggle(r.id)} aria-expanded={open}>
+            <tr className={`cursor-pointer border-t border-border hover:bg-surface-2 ${ROW}`} onClick={() => onToggle(r.id)} aria-expanded={open}>
               <td className="px-3 py-2 font-medium whitespace-nowrap">
                 <span className="mr-1 inline-block w-3 text-muted">{open ? "▾" : "▸"}</span>
                 {r.no}
@@ -349,10 +440,12 @@ function ReceiveTable({
               <td className={`px-3 py-2 text-right tabular-nums ${b.remaining > 0 ? "text-warn" : "text-muted"}`}>{fmt(b.remaining)}</td>
               <td className="px-3 py-2 whitespace-nowrap">{day(b.last_receive_date)}</td>
               <td className="px-3 py-2">
-                {b.remaining === 0 ? (
+                {r.workflow_status && r.workflow_status !== "approved" ? (
+                  <Pill tone="warn">รออนุมัติ Request</Pill>
+                ) : b.remaining === 0 ? (
                   <Pill tone="ok">รับครบ</Pill>
                 ) : onReceive ? (
-                  <button type="button" className="btn btn-primary px-3 py-1 text-xs" onClick={(e) => (e.stopPropagation(), onReceive(r))}>รับของ</button>
+                  <button type="button" className="btn btn-primary !min-h-0 !px-2 !py-0.5 text-xs !leading-4" onClick={(e) => (e.stopPropagation(), onReceive(r))}>รับของ</button>
                 ) : (
                   <Pill tone={b.status.tone}>{b.status.label}</Pill>
                 )}
@@ -441,7 +534,7 @@ function StatusTable({
           const pct = r.quantity > 0 ? Math.min(100, Math.round((b.received / r.quantity) * 100)) : 0;
           return (
             <Fragment key={r.id}>
-              <tr className="cursor-pointer border-t border-border hover:bg-surface-2" onClick={() => onToggle(r.id)} aria-expanded={open}>
+              <tr className={`cursor-pointer border-t border-border hover:bg-surface-2 ${ROW}`} onClick={() => onToggle(r.id)} aria-expanded={open}>
                 <td className="px-3 py-2 font-medium whitespace-nowrap">
                   <span className="mr-1 inline-block w-3 text-muted">{open ? "▾" : "▸"}</span>
                   {r.no}
@@ -451,10 +544,8 @@ function StatusTable({
                 <td className="px-3 py-2 text-right tabular-nums">{fmt(r.quantity)}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{day(r.require_schedule)}</td>
                 <td className="px-3 py-2 text-right tabular-nums text-ok">
+                  <span className="mr-2 inline-block h-1 w-10 rounded-full bg-surface-2 align-middle" aria-hidden="true"><span className="block h-1 rounded-full bg-ok" style={{ width: `${pct}%` }} /></span>
                   {fmt(b.received)}
-                  <div className="mt-1 h-1 rounded-full bg-surface-2">
-                    <div className="h-1 rounded-full bg-ok" style={{ width: `${pct}%` }} />
-                  </div>
                 </td>
                 <td className={`px-3 py-2 text-right font-semibold tabular-nums ${b.remaining > 0 ? "text-warn" : "text-muted"}`}>{fmt(b.remaining)}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{day(b.last_receive_date)}</td>
@@ -690,23 +781,41 @@ function FilePicker({ files, onChange, onError, disabled, hint }: { files: File[
   );
 }
 
-const blankRequest = { description: "", spec: "", unit: "", quantity: "", require_schedule: "", remark: "" };
+const blankRequest = { description: "", spec: "", area: "", unit: "", quantity: "", require_schedule: "", remark: "" };
 
-function RequestDialog({ project, actor, preparer, onClose, onSaved }: { project: ProjectRecord; actor: string; preparer: string; onClose: () => void; onSaved: (no: string) => void }) {
+function RequestDialog({ project, actor, preparer, onClose, onSaved, draft }: { draft?: MaterialRequest; project: ProjectRecord; actor: string; preparer: string; onClose: () => void; onSaved: (no: string, savedAsDraft?: boolean) => void }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const [v, setV] = useState(blankRequest);
+  const [items, setItems] = useState(() => draft ? (draft.items?.length ? draft.items : [{ ...draft, id: "initial" }]).map((item) => ({ ...item, area: item.area || "", quantity: String(item.quantity) })) : [{ ...blankRequest, id: "initial" }]);
   const [files, setFiles] = useState<File[]>([]);
   const [submission, setSubmission] = useState(() => {
+    if (draft?.submission) return { ...draft.submission, checked_by: "", approved_by: "", reviewed_by: "" };
     const initial = blankMaterialSubmission(project, todayInBangkok(), preparer);
     initial.history = [{ revision: initial.revision, date: initial.submission_date, details: "Submitted for consideration and approval" }];
     return initial;
   });
   const [preview, setPreview] = useState(false);
+  const [docSetup, setDocSetup] = useState<MaterialDocSetup>();
+  const [profileId, setProfileId] = useState(draft?.document_profile_id || "");
   const [validationMode, setValidationMode] = useState<"save" | "preview" | null>(null);
   const { error, setError, serverErrors, setServerErrors, pending, run } = useModalSave(dialogRef);
-  const fieldErrors = { ...serverErrors, ...(validationMode ? materialRequestFieldErrors({ ...v, submission }, validationMode === "preview") : {}) };
-  const set = (k: keyof typeof blankRequest) => (e: { target: { value: string } }) => {
-    setV({ ...v, [k]: e.target.value });
+  useEffect(() => {
+    let active = true;
+    loadMaterialDocSetup(project.id).then((value) => { if (active) setDocSetup(value); }).catch(() => { /* Setup Doc is optional for creating a request. */ });
+    return () => { active = false; };
+  }, [project.id]);
+  const selectedProfile = docSetup?.profiles.find((profile) => profile.id === profileId);
+  function errorsForItems(preview: boolean) {
+    const errors: MaterialFieldErrors = {};
+    items.forEach((item, index) => {
+      for (const [key, message] of Object.entries(materialRequestFieldErrors({ ...item, submission }, preview))) {
+        errors[key in blankRequest ? `items.${index}.${key}` : key] = message;
+      }
+    });
+    return errors;
+  }
+  const fieldErrors = { ...serverErrors, ...(validationMode ? errorsForItems(validationMode === "preview") : {}) };
+  const set = (index: number, k: keyof typeof blankRequest) => (e: { target: { value: string } }) => {
+    setItems((current) => current.map((item, i) => i === index ? { ...item, [k]: e.target.value } : item));
     setServerErrors({});
     setError(undefined);
   };
@@ -715,7 +824,7 @@ function RequestDialog({ project, actor, preparer, onClose, onSaved }: { project
     setValidationMode(mode);
     setServerErrors({});
     setError(undefined);
-    const problems = materialRequestFieldErrors({ ...v, submission }, mode === "preview");
+    const problems = errorsForItems(mode === "preview");
     if (Object.keys(problems).length) {
       focusMaterialError(dialogRef.current);
       return false;
@@ -723,75 +832,94 @@ function RequestDialog({ project, actor, preparer, onClose, onSaved }: { project
     return true;
   }
 
-  function onSubmit(e: FormEvent) {
-    e.preventDefault();
+  function save(keepDraft = false) {
     if (!validate("save")) return;
-    const quantity = Number(v.quantity);
     const document = cleanMaterialSubmission(submission);
-    const input = { description: v.description.trim(), spec: v.spec.trim(), unit: v.unit.trim(), quantity, require_schedule: v.require_schedule, remark: v.remark.trim(), submission: document };
-    run(async () => onSaved(await createMaterialRequest(project.id, input, files, actor)));
+    const inputs = items.map((item) => ({ description: item.description.trim(), spec: item.spec.trim(), area: item.area.trim(), unit: item.unit.trim(), quantity: Number(item.quantity), require_schedule: item.require_schedule, remark: item.remark.trim(), submission: document, document_profile_id: selectedProfile?.id || profileId || "", document_profile_name: selectedProfile?.name || "" }));
+    run(async () => onSaved(await createMaterialRequestWithItems(project.id, inputs, files, actor, draft, keepDraft), keepDraft));
   }
 
   return (
     <>
     <Modal
       dialogRef={dialogRef}
-      title="เพิ่ม Material Request"
-      subtitle={`${project.code} · Request No. สร้างอัตโนมัติเมื่อบันทึก`}
+      title={draft ? `แก้ไข Draft ${draft.no}` : "เพิ่ม Material Request"}
+      subtitle={`${project.code} · ${draft ? "แก้ไขแล้วส่งตรวจ CM ใหม่ โดยใช้ Request No. เดิม" : "Request No. สร้างอัตโนมัติเมื่อบันทึก"}`}
       icon="+"
       error={error}
       fieldErrors={fieldErrors}
       pending={pending}
-      submitLabel="บันทึก Request"
-      onSubmit={onSubmit}
+      submitLabel={draft ? "ส่งใหม่ให้ CM" : "สร้าง Request / ส่งให้ CM"}
+      onSubmit={(e) => { e.preventDefault(); save(); }}
       onClose={onClose}
       wide
-      footerActions={<button type="button" className="btn" disabled={pending} onClick={() => {
+      footerActions={<>{draft && <button type="button" className="btn" disabled={pending} onClick={() => save(true)}>บันทึก Draft</button>}<button type="button" className="btn" disabled={pending} onClick={() => {
         if (!validate("preview")) return;
         setPreview(true);
-      }}>ดูตัวอย่าง / PDF</button>}
+      }}>ดูตัวอย่าง / PDF</button></>}
     >
-      <p className="text-sm text-muted">กรอกข้อมูลวัสดุสำหรับติดตามรับของ และรายละเอียดเอกสาร 3 หน้าสำหรับยื่นขออนุมัติ</p>
-      <section className="space-y-3">
-        <h3 className="text-sm font-semibold text-bad">ข้อมูลวัสดุ</h3>
-        <div>
-          <label className="label" htmlFor="mr-desc">Description / ชื่อวัสดุบนหน้าปก *</label>
-          <input id="mr-desc" {...materialFieldProps("description", fieldErrors)} className="input" placeholder="เช่น เหล็กเส้น DB12" maxLength={200} value={v.description} onChange={set("description")} autoFocus />
-            <MaterialFieldError name="description" errors={fieldErrors} />
-        </div>
-        <div>
-          <label className="label" htmlFor="mr-spec">Spec</label>
-          <textarea id="mr-spec" className="input" rows={2} placeholder="เช่น SD40 ยาว 10 ม. มอก.24" maxLength={500} value={v.spec} onChange={set("spec")} />
-        </div>
+      <section className="space-y-2 rounded-lg border border-border bg-surface-2 p-3">
+        <label className="block max-w-xl">
+          <span className="mb-1 block text-xs font-medium text-muted">โปรไฟล์ Setup Doc</span>
+          <select className="input" value={profileId} onChange={(event) => setProfileId(event.target.value)} disabled={pending}>
+            <option value="">แบบปัจจุบันของโครงการ</option>
+            {(docSetup?.profiles || []).map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
+          </select>
+        </label>
+        <p className="text-xs text-muted">เลือกแบบจัดหน้าใบปะหน้าที่จะใช้กับ Request นี้{docSetup?.profiles.length ? "" : " · ยังไม่มีโปรไฟล์ ให้บันทึกจาก Setup Doc ก่อน"}</p>
       </section>
-      <section className="space-y-3">
-        <h3 className="text-sm font-semibold text-warn">การขอเบิก</h3>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div>
-            <label className="label" htmlFor="mr-unit">Unit *</label>
-            <input id="mr-unit" {...materialFieldProps("unit", fieldErrors)} className="input" placeholder="เส้น / ถุง / คิว" maxLength={30} value={v.unit} onChange={set("unit")} />
-            <MaterialFieldError name="unit" errors={fieldErrors} />
-          </div>
-          <div>
-            <label className="label" htmlFor="mr-qty">Quantity *</label>
-            <input id="mr-qty" {...materialFieldProps("quantity", fieldErrors)} className="input text-right" type="number" min="0" step="any" value={v.quantity} onChange={set("quantity")} />
-            <MaterialFieldError name="quantity" errors={fieldErrors} />
-          </div>
-          <div>
-            <label className="label" htmlFor="mr-sch">Require Schedule *</label>
-            <input id="mr-sch" {...materialFieldProps("require_schedule", fieldErrors)} className="input" type="date" value={v.require_schedule} onChange={set("require_schedule")} />
-            <MaterialFieldError name="require_schedule" errors={fieldErrors} />
-          </div>
-        </div>
-        <div>
-          <label className="label" htmlFor="mr-remark">Remark</label>
-          <textarea id="mr-remark" className="input" rows={3} placeholder="เช่น ใช้งานฐานราก F1-F6" maxLength={1000} value={v.remark} onChange={set("remark")} />
-        </div>
-      </section>
-      <MaterialSubmissionFields value={submission} errors={fieldErrors} onChange={(next) => { setSubmission(next); setServerErrors({}); setError(undefined); }} disabled={pending} />
+      <MaterialSubmissionFields value={submission} errors={fieldErrors} onChange={(next) => { setSubmission(next); setServerErrors({}); setError(undefined); }} disabled={pending}>
+        <section className="space-y-2 border-t border-border pt-4">
+          <h3 className="text-sm font-semibold">ข้อมูลวัสดุ <span className="font-normal text-muted">· {items.length} รายการ</span></h3>
+          <p className="text-xs text-muted">วัสดุทุกรายการอยู่ใน Request No. เดียวกัน · เพิ่มได้สูงสุด 50 รายการ</p>
+          {items.map((item, index) => {
+            const field = (key: keyof typeof blankRequest, label: string, maxLength: number, type = "text", placeholder = "") => {
+              const name = `items.${index}.${key}`;
+              return <label className="block min-w-0">
+                <span className="mb-1 block text-xs text-muted">{label}</span>
+                <input {...materialFieldProps(name, fieldErrors)} className="input !min-h-0 !px-2 !py-1.5 text-sm" type={type} value={item[key]} onChange={set(index, key)} maxLength={maxLength} placeholder={placeholder} min={type === "number" ? 0 : undefined} step={type === "number" ? "any" : undefined} />
+                <MaterialFieldError name={name} errors={fieldErrors} />
+              </label>;
+            };
+            return <div key={item.id} className="space-y-2 rounded-lg border border-border bg-surface-2 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <h4 className="text-xs font-semibold">รายการที่ {index + 1}</h4>
+                {items.length > 1 && <button type="button" className="text-xs text-bad" aria-label={`ลบวัสดุรายการที่ ${index + 1}`} onClick={() => { setItems((current) => current.filter((row) => row.id !== item.id)); setServerErrors({}); }}>ลบรายการ</button>}
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {field("description", `Description / ชื่อวัสดุบนหน้าปก * (${item.description.length}/20)`, 20, "text", "เช่น เหล็กเส้น DB12")}
+                {field("spec", `Spec (${item.spec.length}/20)`, 20, "text", "เช่น SD40 ยาว 10 ม.")}
+              </div>
+              {field("area", `พื้นที่ (${item.area.length}/50)`, 50, "text", "เช่น อาคาร A ชั้น 2")}
+              <div className="text-xs font-medium">การขอเบิก</div>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {field("unit", "Unit *", 30, "text", "เส้น / ถุง / คิว")}
+                {field("quantity", "Quantity *", 30, "number")}
+                <div className="col-span-2 sm:col-span-1">{field("require_schedule", "Require Schedule *", 10, "date")}</div>
+              </div>
+              <label className="block"><span className="mb-1 block text-xs text-muted">Remark ({item.remark.length}/50)</span><textarea {...materialFieldProps(`items.${index}.remark`, fieldErrors)} className="input !min-h-0 !px-2 !py-1.5 text-sm" rows={1} maxLength={50} value={item.remark} onChange={set(index, "remark")} /><MaterialFieldError name={`items.${index}.remark`} errors={fieldErrors} /></label>
+              <div className="flex flex-wrap gap-2">
+                {index === items.length - 1 && <button type="button" className="btn !px-3 !py-1.5 text-xs" disabled={items.length >= 50} onClick={() => { setItems((current) => [...current, { ...blankRequest, id: crypto.randomUUID() }]); setServerErrors({}); }}>+ เพิ่มรายการวัสดุ</button>}
+                <button type="button" className="btn !px-3 !py-1.5 text-xs" disabled={items.length >= 50} aria-label={`Duplicate วัสดุรายการที่ ${index + 1}`} onClick={() => {
+                  const id = crypto.randomUUID();
+                  setItems((current) => {
+                    if (current.length >= 50) return current;
+                    const sourceIndex = current.findIndex((row) => row.id === item.id);
+                    if (sourceIndex < 0) return current;
+                    return [...current.slice(0, sourceIndex + 1), { ...current[sourceIndex], id }, ...current.slice(sourceIndex + 1)];
+                  });
+                  setServerErrors({});
+                  setError(undefined);
+                }}>Duplicate / คัดลอกรายการ</button>
+              </div>
+            </div>;
+          })}
+        </section>
+      </MaterialSubmissionFields>
+      {draft && draft.files.length > 0 && <div className="text-xs"><p>ไฟล์แนบเดิม</p><FileLinks files={draft.files} /></div>}
       <FilePicker files={files} onChange={setFiles} onError={setError} disabled={pending} hint="แบบ, ใบเสนอราคา, รูป ฯลฯ" />
     </Modal>
-    {preview && <MaterialSubmissionPreview project={project} request={{ ...v, quantity: Number(v.quantity) || 0, no: "DRAFT", created_at: "", submission: cleanMaterialSubmission(submission) }} draft onClose={() => setPreview(false)} />}
+    {preview && <MaterialSubmissionPreview project={project} request={{ ...items[0], items: items.map((item) => ({ ...item, quantity: Number(item.quantity) || 0 })), quantity: Number(items[0].quantity) || 0, no: "DRAFT", created_at: "", submission: cleanMaterialSubmission(submission), document_profile_id: selectedProfile?.id || profileId || "", document_profile_name: selectedProfile?.name || "" }} localFiles={files} draft onClose={() => setPreview(false)} />}
     </>
   );
 }
@@ -838,7 +966,7 @@ function ReceiveDialog({
     const quantity = Number(v.quantity);
     const input = { quantity, receive_date: v.receive_date, do_no: v.do_no.trim(), approval: v.approval, remark: v.remark.trim() };
     run(async () => {
-      await receiveMaterial(project.id, r.id, input, files, actor);
+      await receiveMaterial(project.id, r.request_id || r.id, input, files, actor, r.item_id);
       onSaved(quantity);
     });
   }

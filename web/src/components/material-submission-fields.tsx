@@ -1,11 +1,12 @@
 "use client";
 
 import type { MaterialSubmission, MaterialFieldErrors } from "@/lib/material-submission";
+import type { ReactNode } from "react";
 import { MaterialFieldError, materialFieldProps } from "./material-field-error";
 
 type TextKey = Exclude<keyof MaterialSubmission, "history" | "contents">;
 
-export function MaterialSubmissionFields({ value: v, onChange, disabled, errors = {} }: { value: MaterialSubmission; onChange: (value: MaterialSubmission) => void; disabled: boolean; errors?: MaterialFieldErrors }) {
+export function MaterialSubmissionFields({ value: v, onChange, disabled, errors = {}, children }: { value: MaterialSubmission; onChange: (value: MaterialSubmission) => void; disabled: boolean; errors?: MaterialFieldErrors; children?: ReactNode }) {
   function set(key: TextKey, value: string) {
     const history = v.history.map((r) => {
       if (r.revision !== v.revision || r.date !== v.submission_date) return r;
@@ -23,13 +24,12 @@ export function MaterialSubmissionFields({ value: v, onChange, disabled, errors 
 
   return (
     <fieldset disabled={disabled} className="min-w-0 space-y-5 disabled:opacity-60">
-      <section className="space-y-3 border-t border-border pt-4">
+      <section className="space-y-3">
         <h3 className="font-semibold">หน้า 1 · หน้าปกขออนุมัติวัสดุ</h3>
         <div className="grid gap-3 sm:grid-cols-2">
           {field("document_no", "Doc. No. / เลขที่เอกสาร", 100, "เว้นว่างเพื่อใช้ Request No. อัตโนมัติ")}
           {field("revision", "Revision", 20, "R0", true)}
           {field("submission_date", "วันที่ยื่นเอกสาร", 10, "", true, "date")}
-          {field("submission_purpose", "วัตถุประสงค์การยื่น", 100, "For Approval")}
           {field("manufacturer", "ผู้ผลิต / ยี่ห้อ", 200)}
           {field("project_title", "Project Title / ชื่อโครงการ", 200, "", true)}
           {field("location", "Location / สถานที่", 240)}
@@ -39,14 +39,12 @@ export function MaterialSubmissionFields({ value: v, onChange, disabled, errors 
           {field("subcontractor", "Sub Contractor / ผู้รับเหมาช่วง")}
         </div>
         <h4 className="text-sm font-semibold">ผู้รับผิดชอบเอกสาร</h4>
-        <p className="text-xs text-muted">ชื่อจะแสดงใต้ช่องลงนามใน PDF การกรอกชื่อไม่ได้เปลี่ยนสถานะอนุมัติในระบบ</p>
+        <p className="text-xs text-muted">ผู้ตรวจสอบและผู้อนุมัติจะบันทึกอัตโนมัติเมื่อ CM และ PM อนุมัติ</p>
         <div className="grid gap-3 sm:grid-cols-2">
           {field("prepared_by", "Prepared / ผู้จัดทำ", 80)}
-          {field("checked_by", "Checked / ผู้ตรวจสอบ", 80)}
-          {field("reviewed_by", "Reviewed / ผู้ทบทวน", 80)}
-          {field("approved_by", "Approved / ผู้อนุมัติ", 80)}
         </div>
       </section>
+      {children}
       <section className="space-y-3 border-t border-border pt-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="font-semibold">หน้า 2 · History of Submission</h3>
@@ -68,7 +66,7 @@ export function MaterialSubmissionFields({ value: v, onChange, disabled, errors 
           <h3 className="font-semibold">หน้า 3 · Table of Content</h3>
           <button type="button" className="btn text-xs" disabled={v.contents.length >= 60} onClick={() => onChange({ ...v, contents: [...v.contents, { title: "", page: "" }] })}>+ เพิ่มหัวข้อ</button>
         </div>
-        <p className="text-xs text-muted">แก้ไขหัวข้อและเลขหน้าตามชุดเอกสารที่จะยื่น เว้นว่างเลขหน้าได้ PDF นี้สร้างเฉพาะหน้าปก ประวัติ และสารบัญ ไฟล์แนบไม่ได้ถูกรวมเป็นหน้าต่อท้าย</p>
+        <p className="text-xs text-muted">แก้ไขหัวข้อและเลขหน้าตามชุดเอกสารที่จะยื่น เว้นว่างเลขหน้าได้ โดยไฟล์แนบจะแสดงต่อท้าย Request Material Form ใน Preview และ PDF ที่สร้างจริง</p>
         <MaterialFieldError name="contents" errors={errors} />
         {v.contents.map((r, i) => (
           <div key={i} className="flex items-start gap-2">

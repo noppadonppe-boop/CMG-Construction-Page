@@ -1,1 +1,15 @@
-{"compilerOptions":{"module":"commonjs","target":"ES2022","outDir":"lib","rootDir":"../server","strict":true,"esModuleInterop":true,"skipLibCheck":true},"include":["../server/**/*.ts"]}
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "ES2022",
+    "outDir": "lib",
+    "rootDir": "..",
+    "strict": true,
+    "rewriteRelativeImportExtensions": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true
+  },
+  "include": [
+    "../server/**/*.ts"
+  ]
+}

@@ -3,7 +3,7 @@ import { manpowerSummaryVariables, manpowerVariables } from "./dcr-manpower-vari
 import { manpowerTotals, workingHours, type DcrData } from "./dcr";
 import { DCR_TEXT, translateValue, type ReportLang } from "./dcr-i18n";
 type Head = { project_name: string; project_no: string; client: string; consultant: string; contractor: string; subcontractors: string; location: string; doc_no: string };
-export type LayoutVariable = { key: string; label: string; value: string };
+export type LayoutVariable = { key: string; label: string; value: string; weatherTable?: Pick<DcrData["weather"], "am" | "pm"> };
 export function layoutVariables(r: DcrData, head: Head, lang: ReportLang = "th"): LayoutVariable[] {
   r = { ...r, manpower: { ...r.manpower, indirect: r.manpower.indirect.map(normalizeHeadcount), direct: r.manpower.direct.map(normalizeHeadcount) } };
   const t = DCR_TEXT[lang];
@@ -31,6 +31,7 @@ export function layoutVariables(r: DcrData, head: Head, lang: ReportLang = "th")
   columns("E", r.issues, [["description", "รายละเอียดปัญหา", x => x.description], ["cause", "สาเหตุ", x => translateValue(t, x.cause)], ["impact", "ชั่วโมงผลกระทบ", x => x.impact_hours], ["responsible", "ผู้รับผิดชอบ", x => x.responsible], ["action", "การแก้ไข", x => x.action]]);
   columns("F", r.tomorrow, [["task", "งานพรุ่งนี้", x => x.task], ["manpower", "กำลังคนพรุ่งนี้", x => x.manpower], ["resources", "ทรัพยากรพรุ่งนี้", x => x.resources]]);
   return [
+    { key: "B.table", label: "B · ตารางสภาพอากาศ", value: `${t.am}: ${t.sky[r.weather.am.sky]} · ${t.work[r.weather.am.status]}\n${t.pm}: ${t.sky[r.weather.pm.sky]} · ${t.work[r.weather.pm.status]}`, weatherTable: { am: r.weather.am, pm: r.weather.pm } },
     ...fields.map(([key, label, value]) => ({ key, label, value: value == null || value === "" ? "" : String(value) })),
     ...manpowerVariables("indirect", r.manpower.indirect),
     ...manpowerVariables("direct", r.manpower.direct, r.manpower.direct_columns),

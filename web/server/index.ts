@@ -1,6 +1,7 @@
 import "dotenv/config";
 
 import cors from "cors";
+import { registerMaterialWorkflow } from "./lib/material-workflow";
 import express, { type Request, type Response } from "express";
 import { getAdminAuth, getAdminDb } from "./lib/firebase-admin";
 import { mailFrom, transporter, verifyMailer } from "./lib/mail";
@@ -17,6 +18,7 @@ const allowedOrigins = new Set(
     "https://cmg-construction-page.firebaseapp.com",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    ...(!process.env.K_SERVICE && !process.env.FUNCTION_TARGET ? ["http://192.168.1.108:3000"] : []),
     "http://localhost:5173",
     "http://127.0.0.1:5173",
   ].filter(Boolean),
@@ -191,6 +193,8 @@ app.post(["/send-email", "/api/send-email"], async (req: Request, res: Response)
     res.status(400).json({ success: false, error: error instanceof Error ? error.message : "Email send failed" });
   }
 });
+
+registerMaterialWorkflow(app);
 
 if (!process.env.K_SERVICE && !process.env.FUNCTION_TARGET) app.listen(port, () => {
   console.log(`SMTP email backend listening on http://localhost:${port}`);

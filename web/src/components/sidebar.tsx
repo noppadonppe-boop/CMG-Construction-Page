@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { StaticLink as Link, toStaticHref } from "./static-link";
 import { useRouter } from "next/navigation";
 import { useActualPathname } from "@/lib/static-export";
 import { Suspense, useEffect, useState, type ReactNode } from "react";
@@ -236,7 +236,7 @@ function ProjectBar() {
         aria-label="สลับโครงการ"
         className="input w-auto min-w-0 truncate py-1.5 font-semibold"
         value={project.id}
-        onChange={(e) => router.push(switchProjectHref(pathname, e.target.value))}
+        onChange={(e) => router.push(toStaticHref(switchProjectHref(pathname, e.target.value)))}
       >
         {projects.map((p) => (
           <option key={p.id} value={p.id}>

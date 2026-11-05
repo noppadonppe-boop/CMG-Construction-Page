@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, type ComponentProps } from "react";
 import { STATIC_PLACEHOLDER } from "@/lib/static-placeholder";
 
@@ -21,19 +21,22 @@ export function StaticLink({ href, ...props }: ComponentProps<typeof Link> & { h
 
 export function toStaticHref(href: string) {
   if (!STATIC) return href;
-  const [path, search = ""] = href.split("?");
+  const hashIndex = href.indexOf("#");
+  const hash = hashIndex < 0 ? "" : href.slice(hashIndex);
+  const [path, search = ""] = (hashIndex < 0 ? href : href.slice(0, hashIndex)).split("?");
   if (!DYNAMIC.some((re) => re.test(path)) || path.split("/").includes("new")) return href;
   const params = new URLSearchParams(search);
   params.set(TO, path);
   const segs = path.split("/");
   const idIndexes = ["daily-reports", "documents", "issues"].includes(segs[1]) ? [2, 3] : [2];
   const placeholder = segs.map((seg, i) => (idIndexes.includes(i) ? STATIC_PLACEHOLDER : seg)).join("/");
-  return `${placeholder}?${params}`;
+  return `${placeholder}?${params}${hash}`;
 }
 
 /** หลังเปลี่ยนไปหน้า "_" แล้ว แทน URL ในแถบที่อยู่ด้วย URL จริง (Next ซิงก์ replaceState เข้ากับ router) */
 export function StaticUrlRestore() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   useEffect(() => {
     if (!STATIC) return;
     const params = new URLSearchParams(window.location.search);
@@ -41,7 +44,7 @@ export function StaticUrlRestore() {
     if (!to) return;
     params.delete(TO);
     const rest = params.toString();
-    window.history.replaceState(window.history.state, "", rest ? `${to}?${rest}` : to);
-  }, [pathname]);
+    window.history.replaceState(window.history.state, "", `${to}${rest ? `?${rest}` : ""}${window.location.hash}`);
+  }, [pathname, searchParams]);
   return null;
 }

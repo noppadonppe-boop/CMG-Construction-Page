@@ -1,7 +1,7 @@
 "use client";
 
 import { addDoc, deleteDoc, onSnapshot, runTransaction, serverTimestamp, updateDoc, writeBatch, type DocumentSnapshot } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import { createContext, createElement, useContext, useEffect, useState, type ReactNode } from "react";
 import { db } from "../firebase/client";
 import { DataError, deleteFiles, newId, uploadFile, type StoredFile } from "./common";
 import { menuIconPath, menuRef, menusCol } from "./paths";
@@ -146,8 +146,12 @@ export function inAppPath(href: string): string | null {
 }
 
 /** เมนูเพิ่มเติมทั้งหมด (realtime) เรียงตามลำดับที่ตั้งไว้ */
-export function useMenus() {
-  const [state, setState] = useState<{ menus: CustomMenu[]; loading: boolean; error?: string }>({ menus: [], loading: true });
+type MenusState = { menus: CustomMenu[]; loading: boolean; error?: string };
+const MenusContext = createContext<MenusState | null>(null);
+
+/** Share one realtime subscription across the sidebar and pages during navigation. */
+export function MenusProvider({ children }: { children: ReactNode }) {
+  const [state, setState] = useState<MenusState>({ menus: [], loading: true });
   useEffect(
     () =>
       onSnapshot(
@@ -157,6 +161,12 @@ export function useMenus() {
       ),
     [],
   );
+  return createElement(MenusContext.Provider, { value: state }, children);
+}
+
+export function useMenus() {
+  const state = useContext(MenusContext);
+  if (!state) throw new Error("useMenus must be used within MenusProvider");
   return state;
 }
 

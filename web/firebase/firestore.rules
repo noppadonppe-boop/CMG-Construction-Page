@@ -63,7 +63,81 @@ service cloud.firestore {
 
       match /{col}/{rest=**} {
         allow read: if signedIn();
-        allow write: if signedIn() && !(col in ['menus', 'formStandards', 'mail']);
+        allow write: if signedIn() && !(col in ['menus', 'formStandards', 'mail', 'projects']);
+      }
+
+      match /projects/{projectId} {
+        allow write: if signedIn();
+        match /{section}/{rest=**} {
+          allow write: if signedIn() && !(section in ['material_requests', 'document_setup']);
+        }
+        match /document_setup/{configId} {
+          allow write: if configId == 'material'
+            && hasApprovedRole(['MasterAdmin', 'Admin', 'ProjectManager', 'CM', 'Engineer'])
+            && canUseProject(projectId);
+        }
+        match /material_requests/{requestId} {
+          function requester() {
+            return hasApprovedRole(['MasterAdmin', 'Admin', 'ProjectManager', 'CM', 'Engineer']) && canUseProject(projectId);
+          }
+          function blankSignatures() {
+            return request.resource.data.submission is map
+              && request.resource.data.submission.checked_by == ''
+              && request.resource.data.submission.approved_by == ''
+              && request.resource.data.submission.reviewed_by == '';
+          }
+          allow create: if requester()
+            && request.resource.data.created_by == request.auth.token.email.lower()
+            && request.resource.data.workflow_status == 'pending_cm'
+            && request.resource.data.workflow_version == 1
+            && request.resource.data.approval_history == []
+            && request.resource.data.receipts == []
+            && blankSignatures();
+          allow update: if requester() && (resource.data.created_by == request.auth.token.email.lower() || isApprovedMasterAdmin())
+            && resource.data.workflow_status == 'draft'
+            && request.resource.data.workflow_status in ['draft', 'pending_cm']
+            && request.resource.data.workflow_version == resource.data.workflow_version + 1
+            && blankSignatures()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['description', 'spec', 'area', 'unit', 'quantity', 'require_schedule', 'remark', 'submission', 'items', 'files', 'document_profile_id', 'document_profile_name', 'workflow_status', 'workflow_version', 'rejection_reason', 'updated_at', 'updated_by']);
+          allow update: if requester()
+            && (!('workflow_status' in resource.data) || resource.data.workflow_status == 'approved')
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['receipts', 'updated_at', 'updated_by']);
+          function reviewTransition() {
+            let before = resource.data.workflow_status;
+            let after = request.resource.data.workflow_status;
+            return (before == 'pending_cm' && hasApprovedRole(['CM', 'MasterAdmin']) && after in ['draft', 'pending_pm'])
+              || (before == 'pending_pm' && hasApprovedRole(['ProjectManager', 'MasterAdmin']) && after in ['draft', 'approved']);
+          }
+          function reviewerName() {
+            return me().firstName != '' ? (me().lastName != '' ? me().firstName + ' ' + me().lastName : me().firstName)
+              : (me().lastName != '' ? me().lastName : request.auth.token.email.lower());
+          }
+          function reviewRecord() {
+            let data = request.resource.data;
+            let old = resource.data;
+            let entry = data.approval_history[data.approval_history.size() - 1];
+            return data.approval_history == old.approval_history.concat([entry])
+              && entry.email == request.auth.token.email.lower()
+              && entry.name == reviewerName()
+              && entry.stage == (old.workflow_status == 'pending_cm' ? 'CM' : 'PM')
+              && entry.action == (data.workflow_status == 'draft' ? 'reject' : 'approve')
+              && entry.reason == data.rejection_reason
+              && data.rejection_reason is string && data.rejection_reason.size() <= 500
+              && (data.workflow_status == 'draft' ? data.rejection_reason.size() > 0 : data.rejection_reason == '')
+              && data.submission.diff(old.submission).affectedKeys().hasOnly(['checked_by', 'approved_by', 'reviewed_by'])
+              && data.submission.reviewed_by == ''
+              && (data.workflow_status == 'draft' ? (data.submission.checked_by == '' && data.submission.approved_by == '')
+                : data.workflow_status == 'pending_pm' ? (data.submission.checked_by == reviewerName() && data.submission.approved_by == old.submission.approved_by)
+                : (data.submission.approved_by == reviewerName() && data.submission.checked_by == old.submission.checked_by));
+          }
+          allow update: if canUseProject(projectId) && reviewTransition() && reviewRecord()
+            && request.resource.data.workflow_version == resource.data.workflow_version + 1
+            && request.resource.data.updated_by == request.auth.token.email.lower()
+            && request.resource.data.updated_at == request.time
+            && (request.resource.data.workflow_status != 'approved' || request.resource.data.email_status == 'pending')
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['workflow_status', 'workflow_version', 'submission', 'rejection_reason', 'approval_history', 'updated_at', 'updated_by', 'email_status']);
+          allow delete: if isApprovedMasterAdmin();
+        }
       }
 
       match /menus/{menuId} {

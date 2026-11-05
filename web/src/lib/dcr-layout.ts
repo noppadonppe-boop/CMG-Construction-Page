@@ -58,6 +58,8 @@ export interface LayoutSlot {
   fit: "contain" | "cover";
   /** ตาราง (kind = table): ข้อความแต่ละเซลล์ แถว × คอลัมน์ — เซลล์ที่ถูกรวมเก็บค่าว่าง */
   cells: string[][];
+  column_widths?: number[];
+  row_heights?: number[];
   merges: CellMerge[];
   /** แถวแรกเป็นหัวตาราง */
   header: boolean;
@@ -215,6 +217,8 @@ function toSlot(v: Loose): LayoutSlot {
     fit: v.fit === "cover" ? "cover" : "contain",
     // Firestore เก็บ array ซ้อนไม่ได้ → บันทึกเป็น [{c: [...]}]
     ...normalizeTable(cells, Array.isArray(v.merges) ? (v.merges as CellMerge[]) : []),
+    ...(Array.isArray(v.column_widths) ? { column_widths: tableColumnWidths(v.column_widths, cells[0]?.length || 1) } : {}),
+    ...(Array.isArray(v.row_heights) ? { row_heights: tableRowHeights(v.row_heights, cells.length, TEXT_SIZE_MM[pick(v.size, Object.keys(TEXT_SIZES) as TextSize[], "m")] * 1.9) } : {}),
     header: v.header !== false,
     border: v.border !== false,
     shade: v.shade === true,
@@ -306,3 +310,24 @@ export function normalizeTable(cells: string[][], merges: CellMerge[], rows = ce
 /** แปลงเป็นรูปแบบที่ Firestore เก็บได้ (ไม่มี array ซ้อน array) */
 export const layoutPagesForStore = (pages: LayoutPage[]) =>
   pages.map((p) => ({ ...p, slots: p.slots.map((s) => ({ ...s, cells: s.cells.map((c) => ({ c })) })) }));
+
+export function tableColumnWidths(values: unknown, count: number): number[] {
+  const input = Array.isArray(values) ? values : [];
+  const widths = Array.from({ length: count }, (_, i) => typeof input[i] === "number" && Number.isFinite(input[i]) && input[i] > 0 ? input[i] : 100 / count);
+  const sum = widths.reduce((a, b) => a + b, 0);
+  return widths.map(w => w / sum * 100);
+}
+
+export function tableRowHeights(values: unknown, count: number, fallback: number): number[] {
+  const input = Array.isArray(values) ? values : [];
+  return Array.from({ length: count }, (_, i) => typeof input[i] === "number" && Number.isFinite(input[i]) ? Math.min(400, Math.max(3, input[i])) : fallback);
+}
+
+export function resizeTableColumn(widths: number[], boundary: number, delta: number) {
+  const next = [...widths];
+  if (boundary < 0 || boundary >= widths.length - 1) return next;
+  const min = Math.min(3, widths[boundary], widths[boundary + 1]);
+  const change = Math.max(min - widths[boundary], Math.min(widths[boundary + 1] - min, delta));
+  next[boundary] += change; next[boundary + 1] -= change;
+  return next;
+}

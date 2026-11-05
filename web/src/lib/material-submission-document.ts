@@ -1,6 +1,11 @@
 import { blankMaterialSubmission, type MaterialSubmission, type SubmissionProject } from "./material-submission";
 
 export interface SubmissionDocumentRequest {
+  files?: { file_name?: string; url: string; path?: string }[];
+  document_profile_id?: string;
+  document_profile_name?: string;
+  area?: string;
+  items?: { area?: string; description: string; spec: string; unit: string; quantity: number; require_schedule: string; remark: string }[];
   no: string;
   description: string;
   spec: string;
@@ -38,8 +43,10 @@ export function materialSubmissionFilename(request: SubmissionDocumentRequest) {
 export function buildMaterialSubmissionDocument(project: SubmissionProject, request: SubmissionDocumentRequest, draft = false) {
   const s = request.submission ?? { ...blankMaterialSubmission(project, request.created_at.slice(0, 10)), contents: [], history: [] };
   const docNo = s.document_no || request.no || "DRAFT";
-  const coverLength = [request.description, s.manufacturer, s.project_title, s.location, s.owner, s.pmc, s.contractor, s.subcontractor, s.submission_purpose, s.prepared_by, s.checked_by, s.reviewed_by, s.approved_by].join("").length;
-  const title = `<div class="cover-title"><h1>Material Submission for Approval</h1><h2>${show(request.description)}</h2>${s.manufacturer ? `<p>${escape(s.manufacturer)}</p>` : ""}<p>For use in project</p></div>`;
+  const description = request.items?.length ? request.items.length === 1 ? request.items[0].description : `รายการวัสดุ ${request.items.length} รายการ (Material Items)` : request.description;
+  const coverLength = [description, s.manufacturer, s.project_title, s.location, s.owner, s.pmc, s.contractor, s.subcontractor, s.submission_purpose, s.prepared_by, s.checked_by, s.reviewed_by, s.approved_by].join("").length;
+  const area = request.items?.length === 1 ? request.items[0].area : !request.items?.length ? request.area : "";
+  const title = `<div class="cover-title"><h1>Material Submission for Approval</h1><h2>${show(description)}</h2>${s.manufacturer ? `<p>${escape(s.manufacturer)}</p>` : ""}${area ? `<p>พื้นที่: ${escape(area)}</p>` : ""}<p>For use in project</p></div>`;
   const projectRows = [["Project Title", s.project_title], ["Location", s.location], ["Owner", s.owner], ["PMC", s.pmc], ["Contractor", s.contractor], ["Sub Contractor", s.subcontractor]];
   const details = (rows: string[][]) => `<dl class="project">${rows.map(([label, value]) => `<dt>${label}</dt><dd>${show(value)}</dd>`).join("")}</dl>`;
   const signatures = `<table class="signatures"><colgroup><col style="width:7%"><col style="width:14%"><col style="width:19%"><col span="4" style="width:15%"></colgroup><tbody><tr class="sign-space">${Array.from({ length: 7 }, () => "<td></td>").join("")}</tr><tr>${[s.revision, date(s.submission_date), s.submission_purpose, s.prepared_by, s.checked_by, s.reviewed_by, s.approved_by].map((v) => `<td>${show(v)}</td>`).join("")}</tr><tr>${["REV.", "DATE", "DESCRIPTION", "PREPARED", "CHECKED", "REVIEWED", "APPROVED"].map((v) => `<th>${v}</th>`).join("")}</tr></tbody></table>`;
@@ -55,7 +62,12 @@ export function buildMaterialSubmissionDocument(project: SubmissionProject, requ
   for (const [index, rows] of paginate(s.contents, (r) => 1 + Math.ceil(r.title.length / 48) + (r.title.match(/\n/g)?.length || 0)).entries()) {
     bodies.push(`<h1 class="section-title">TABLE OF CONTENT${index ? " (continued)" : ""}</h1><table class="contents"><colgroup><col style="width:7%"><col style="width:80%"><col style="width:13%"></colgroup><thead><tr><th>No.</th><th>Section</th><th>Page</th></tr></thead><tbody>${rows.length ? rows.map((r) => `<tr><td>${++item}</td><td>${show(r.title)}</td><td>${show(r.page)}</td></tr>`).join("") : '<tr><td colspan="3">—</td></tr>'}</tbody></table>`);
   }
-  // Operational fields remain in the tracking board; the requested submission PDF follows the three reference pages.
+  if (request.items && request.items.length > 1) {
+    for (const [index, rows] of paginate(request.items, (row) => 2 + Math.ceil((row.description.length + row.spec.length + (row.area?.length || 0) + row.remark.length) / 35), 20).entries()) {
+      bodies.push(`<h1 class="section-title">MATERIAL ITEMS${index ? " (continued)" : ""}</h1><table class="history"><thead><tr><th>Description / Spec</th><th>พื้นที่</th><th>Quantity / Unit</th><th>Require Schedule</th><th>Remark</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${show(row.description)}<br>${show(row.spec)}</td><td>${show(row.area)}</td><td>${show(row.quantity)} ${show(row.unit)}</td><td>${date(row.require_schedule)}</td><td>${show(row.remark)}</td></tr>`).join("")}</tbody></table>`);
+    }
+  }
+  // Multi-item requests append their item schedule after the three submission sections.
   const header = (page: number) => `<header><div class="brand"><b>CMG</b><span>${show(s.subcontractor)}</span></div><dl><dt>Doc. Title</dt><dd>Material Approval Request</dd><dt>Doc. No.</dt><dd>${escape(docNo)}</dd><dt>Rev. No.</dt><dd>${show(s.revision)}</dd><dt>Page</dt><dd>${page} of ${bodies.length}</dd></dl></header>`;
   return `<!doctype html><html lang="th"><head><meta charset="utf-8"><title>${escape(materialSubmissionFilename(request))}</title><style>
     *{box-sizing:border-box}html{background:#e5e7eb}body{margin:0;color:#111;font-family:Tahoma,Arial,sans-serif;font-size:11pt;line-height:1.55}

@@ -106,9 +106,13 @@ export function validateMaterialSubmission(value: MaterialSubmission): string | 
   return Object.values(materialSubmissionFieldErrors(value))[0] || null;
 }
 
-export function materialRequestFieldErrors(value: { description: string; unit: string; quantity: string | number; require_schedule: string; submission?: MaterialSubmission | null }, preview = false): MaterialFieldErrors {
+export function materialRequestFieldErrors(value: { description: string; unit: string; quantity: string | number; require_schedule: string; spec?: string; area?: string; remark?: string; submission?: MaterialSubmission | null }, preview = false): MaterialFieldErrors {
   const errors: MaterialFieldErrors = {};
+  if ((value.area?.length ?? 0) > 50) errors.area = "พื้นที่ กรอกได้ไม่เกิน 50 ตัวอักษร";
+  if ((value.spec?.length ?? 0) > 20) errors.spec = "Spec กรอกได้ไม่เกิน 20 ตัวอักษร";
+  if ((value.remark?.length ?? 0) > 50) errors.remark = "Remark กรอกได้ไม่เกิน 50 ตัวอักษร";
   if (!value.description.trim()) errors.description = "กรุณาระบุชื่อวัสดุ / Description";
+  else if (value.description.length > 20) errors.description = "Description / ชื่อวัสดุบนหน้าปก กรอกได้ไม่เกิน 20 ตัวอักษร";
   if (!preview) {
     if (!value.unit.trim()) errors.unit = "กรุณาระบุหน่วย / Unit";
     if (!Number.isFinite(Number(value.quantity)) || Number(value.quantity) <= 0) errors.quantity = "จำนวนต้องเป็นตัวเลขที่มากกว่า 0";

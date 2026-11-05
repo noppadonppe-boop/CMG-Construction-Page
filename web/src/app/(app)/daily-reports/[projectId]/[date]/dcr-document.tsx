@@ -278,7 +278,7 @@ export function DcrDocument({ project, settings, r, date, lang = "th" }: { proje
         >
           {page.slots.map((s) => (
             <div key={s.id} style={slotBox(s)}>
-              <SlotContent slot={s} lang={lang} variableValue={variables.find(v => v.key === s.variable)?.value} />
+              <SlotContent slot={s} lang={lang} variableValue={variables.find(v => v.key === s.variable)?.value} weatherTable={variables.find(v => v.key === s.variable)?.weatherTable} />
             </div>
           ))}
         </LayoutPaper>
