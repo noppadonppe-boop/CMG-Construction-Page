@@ -69,7 +69,10 @@ service cloud.firestore {
       match /projects/{projectId} {
         allow write: if signedIn();
         match /{section}/{rest=**} {
-          allow write: if signedIn() && !(section in ['material_requests', 'document_setup']);
+          allow write: if signedIn() && !(section in ['material_requests', 'document_setup', 'overview_embed']);
+        }
+        match /overview_embed/{configId} {
+          allow write: if isApprovedMasterAdmin() && configId == 'scurve';
         }
         match /document_setup/{configId} {
           allow write: if configId == 'material'

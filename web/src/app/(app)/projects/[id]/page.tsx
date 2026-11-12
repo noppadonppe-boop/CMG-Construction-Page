@@ -7,7 +7,7 @@ import { useDailyReports } from "@/lib/db/daily";
 import { useProjects } from "@/lib/db/projects";
 import { formatDate, formatMillions, formatPct, scheduleStatus, weatherLabel } from "@/lib/format";
 import { EmptyState, KpiCard, PageHeader, Pill, Skeleton } from "@/components/ui";
-import { SCurve } from "@/components/s-curve";
+import { OverviewEmbed } from "./overview-embed";
 import { PhotoGallery } from "@/components/photo-gallery";
 import { dailyReportHref } from "@/lib/project-context";
 import { ProjectForms } from "./project-forms";
@@ -71,17 +71,8 @@ export default function ProjectPage() {
         <KpiCard label="สถานที่" value={<span className="text-base">{project.location ?? "-"}</span>} />
       </div>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-[3fr_2fr]">
-        <div className="card">
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <h3 className="font-semibold">S-Curve ความคืบหน้าสะสม</h3>
-            <div className="flex gap-4 text-xs text-muted">
-              <span>┄ แผน</span>
-              <span className="text-primary">━ จริง</span>
-            </div>
-          </div>
-          <SCurve data={progress} />
-        </div>
+      <div className="mt-4 grid items-start gap-4 xl:grid-cols-[3fr_2fr]">
+        <OverviewEmbed projectId={project.id} />
         {can("daily.view") && <div className="card">
           <h3 className="mb-3 font-semibold">รายงานประจำวันล่าสุด</h3>
           {reports.length === 0 ? (
